@@ -1,972 +1,702 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback } from "react";
 
-// Embedded Suburb Database
+// ─── Embedded Suburb Database ───
 const SUBURB_DATA = {
-    'BERKELEY VALE': { postcode:'2261', state:'NSW', medianPrice:935000, weeklyRent:680, population:8951, popGrowth:7.13, medianIncomeWeekly:1780, incomeGrowth:27.78, vacancyRate:1.0, ownerOccRate:77.1, annualGrowth:5.65, daysOnMarket:26, annualSales:149, boomScore:52, zoning:'R2 Low Density', nearestStationKm:4.0 },
-    'TUGGERAH': { postcode:'2259', state:'NSW', medianPrice:850000, weeklyRent:620, population:3500, popGrowth:5.2, medianIncomeWeekly:1650, incomeGrowth:22.0, vacancyRate:0.8, ownerOccRate:72.0, annualGrowth:6.2, daysOnMarket:28, annualSales:95, boomScore:55, zoning:'R2 Low Density', nearestStationKm:0.3 },
-    'WYONG': { postcode:'2259', state:'NSW', medianPrice:780000, weeklyRent:580, population:4200, popGrowth:4.8, medianIncomeWeekly:1500, incomeGrowth:20.0, vacancyRate:0.9, ownerOccRate:68.0, annualGrowth:5.8, daysOnMarket:32, annualSales:120, boomScore:48, zoning:'R2 Low Density', nearestStationKm:0.2 },
-    'GOSFORD': { postcode:'2250', state:'NSW', medianPrice:920000, weeklyRent:650, population:5800, popGrowth:6.0, medianIncomeWeekly:1700, incomeGrowth:25.0, vacancyRate:0.7, ownerOccRate:65.0, annualGrowth:8.4, daysOnMarket:24, annualSales:180, boomScore:60, zoning:'R2 Low Density', nearestStationKm:0.1 },
-    'THE ENTRANCE': { postcode:'2261', state:'NSW', medianPrice:870000, weeklyRent:600, population:4100, popGrowth:3.5, medianIncomeWeekly:1400, incomeGrowth:18.0, vacancyRate:1.2, ownerOccRate:60.0, annualGrowth:4.5, daysOnMarket:35, annualSales:110, boomScore:45, zoning:'R3 Medium Density', nearestStationKm:2.5 },
-    'ERINA': { postcode:'2250', state:'NSW', medianPrice:1100000, weeklyRent:750, population:5500, popGrowth:4.0, medianIncomeWeekly:1900, incomeGrowth:22.0, vacancyRate:0.8, ownerOccRate:78.0, annualGrowth:6.0, daysOnMarket:22, annualSales:90, boomScore:58, zoning:'R2 Low Density', nearestStationKm:3.0 },
-    'WOY WOY': { postcode:'2256', state:'NSW', medianPrice:950000, weeklyRent:660, population:5000, popGrowth:5.5, medianIncomeWeekly:1600, incomeGrowth:24.0, vacancyRate:0.9, ownerOccRate:72.0, annualGrowth:5.5, daysOnMarket:30, annualSales:105, boomScore:50, zoning:'R2 Low Density', nearestStationKm:0.3 },
-    'BLACKTOWN': { postcode:'2148', state:'NSW', medianPrice:880000, weeklyRent:550, population:47000, popGrowth:8.0, medianIncomeWeekly:1650, incomeGrowth:25.0, vacancyRate:1.5, ownerOccRate:62.0, annualGrowth:7.2, daysOnMarket:25, annualSales:350, boomScore:55, zoning:'R2 Low Density', nearestStationKm:0.2 },
-    'PARRAMATTA': { postcode:'2150', state:'NSW', medianPrice:1200000, weeklyRent:650, population:30000, popGrowth:10.0, medianIncomeWeekly:1800, incomeGrowth:28.0, vacancyRate:1.2, ownerOccRate:55.0, annualGrowth:6.5, daysOnMarket:22, annualSales:280, boomScore:62, zoning:'R4 High Density', nearestStationKm:0.1 },
-    'LIVERPOOL': { postcode:'2170', state:'NSW', medianPrice:850000, weeklyRent:530, population:27000, popGrowth:7.5, medianIncomeWeekly:1550, incomeGrowth:23.0, vacancyRate:1.8, ownerOccRate:60.0, annualGrowth:6.8, daysOnMarket:28, annualSales:250, boomScore:50, zoning:'R3 Medium Density', nearestStationKm:0.3 },
-    'PENRITH': { postcode:'2750', state:'NSW', medianPrice:820000, weeklyRent:520, population:13000, popGrowth:6.5, medianIncomeWeekly:1500, incomeGrowth:22.0, vacancyRate:1.5, ownerOccRate:65.0, annualGrowth:7.0, daysOnMarket:30, annualSales:200, boomScore:48, zoning:'R2 Low Density', nearestStationKm:0.2 },
-    'GLENNING VALLEY': { postcode:'2261', state:'NSW', medianPrice:1255000, weeklyRent:750, population:4000, popGrowth:8.5, medianIncomeWeekly:2000, incomeGrowth:30.0, vacancyRate:0.6, ownerOccRate:82.0, annualGrowth:23.0, daysOnMarket:18, annualSales:60, boomScore:72, zoning:'R2 Low Density', nearestStationKm:3.5 },
-    'NEWCASTLE': { postcode:'2300', state:'NSW', medianPrice:1068000, weeklyRent:706, population:4500, popGrowth:5.0, medianIncomeWeekly:1600, incomeGrowth:20.0, vacancyRate:1.0, ownerOccRate:58.0, annualGrowth:5.5, daysOnMarket:28, annualSales:150, boomScore:55, zoning:'R3 Medium Density', nearestStationKm:0.5 },
-    'WOLLONGONG': { postcode:'2500', state:'NSW', medianPrice:1300000, weeklyRent:600, population:15000, popGrowth:4.5, medianIncomeWeekly:1700, incomeGrowth:22.0, vacancyRate:1.2, ownerOccRate:60.0, annualGrowth:5.0, daysOnMarket:30, annualSales:200, boomScore:50, zoning:'R3 Medium Density', nearestStationKm:0.3 },
-    'BANKSTOWN': { postcode:'2200', state:'NSW', medianPrice:1670000, weeklyRent:750, population:35000, popGrowth:9.0, medianIncomeWeekly:1500, incomeGrowth:22.0, vacancyRate:1.3, ownerOccRate:55.0, annualGrowth:26.3, daysOnMarket:20, annualSales:300, boomScore:70, zoning:'R3 Medium Density', nearestStationKm:0.1 },
-    'MOUNT DRUITT': { postcode:'2770', state:'NSW', medianPrice:750000, weeklyRent:500, population:15000, popGrowth:7.0, medianIncomeWeekly:1300, incomeGrowth:20.0, vacancyRate:1.5, ownerOccRate:55.0, annualGrowth:5.6, daysOnMarket:25, annualSales:180, boomScore:48, zoning:'R2 Low Density', nearestStationKm:0.2 },
-    'ST MARYS': { postcode:'2760', state:'NSW', medianPrice:800000, weeklyRent:520, population:12000, popGrowth:8.0, medianIncomeWeekly:1400, incomeGrowth:22.0, vacancyRate:1.3, ownerOccRate:58.0, annualGrowth:15.1, daysOnMarket:22, annualSales:160, boomScore:58, zoning:'R2 Low Density', nearestStationKm:0.1 },
-    'QUAKERS HILL': { postcode:'2763', state:'NSW', medianPrice:950000, weeklyRent:600, population:28000, popGrowth:5.5, medianIncomeWeekly:1700, incomeGrowth:24.0, vacancyRate:1.2, ownerOccRate:75.0, annualGrowth:4.5, daysOnMarket:28, annualSales:150, boomScore:50, zoning:'R2 Low Density', nearestStationKm:0.5 },
+  'BERKELEY VALE': { postcode:'2261', state:'NSW', medianPrice:935000, weeklyRent:680, population:8951, popGrowth:7.13, medianIncomeWeekly:1780, incomeGrowth:27.78, vacancyRate:1.0, ownerOccRate:77.1, annualGrowth:5.65, daysOnMarket:26, annualSales:149, boomScore:52, zoning:'R2 Low Density', nearestStationKm:4.0 },
+  'TUGGERAH': { postcode:'2259', state:'NSW', medianPrice:850000, weeklyRent:620, population:3500, popGrowth:5.2, medianIncomeWeekly:1650, incomeGrowth:22.0, vacancyRate:0.8, ownerOccRate:72.0, annualGrowth:6.2, daysOnMarket:28, annualSales:95, boomScore:55, zoning:'R2 Low Density', nearestStationKm:0.3 },
+  'WYONG': { postcode:'2259', state:'NSW', medianPrice:780000, weeklyRent:580, population:4200, popGrowth:4.8, medianIncomeWeekly:1500, incomeGrowth:20.0, vacancyRate:0.9, ownerOccRate:68.0, annualGrowth:5.8, daysOnMarket:32, annualSales:120, boomScore:48, zoning:'R2 Low Density', nearestStationKm:0.2 },
+  'GOSFORD': { postcode:'2250', state:'NSW', medianPrice:920000, weeklyRent:650, population:5800, popGrowth:6.0, medianIncomeWeekly:1700, incomeGrowth:25.0, vacancyRate:0.7, ownerOccRate:65.0, annualGrowth:8.4, daysOnMarket:24, annualSales:180, boomScore:60, zoning:'R2 Low Density', nearestStationKm:0.1 },
+  'THE ENTRANCE': { postcode:'2261', state:'NSW', medianPrice:870000, weeklyRent:600, population:4100, popGrowth:3.5, medianIncomeWeekly:1400, incomeGrowth:18.0, vacancyRate:1.2, ownerOccRate:60.0, annualGrowth:4.5, daysOnMarket:35, annualSales:110, boomScore:45, zoning:'R3 Medium Density', nearestStationKm:2.5 },
+  'ERINA': { postcode:'2250', state:'NSW', medianPrice:1100000, weeklyRent:750, population:5500, popGrowth:4.0, medianIncomeWeekly:1900, incomeGrowth:22.0, vacancyRate:0.8, ownerOccRate:78.0, annualGrowth:6.0, daysOnMarket:22, annualSales:90, boomScore:58, zoning:'R2 Low Density', nearestStationKm:3.0 },
+  'WOY WOY': { postcode:'2256', state:'NSW', medianPrice:950000, weeklyRent:660, population:5000, popGrowth:5.5, medianIncomeWeekly:1600, incomeGrowth:24.0, vacancyRate:0.9, ownerOccRate:72.0, annualGrowth:5.5, daysOnMarket:30, annualSales:105, boomScore:50, zoning:'R2 Low Density', nearestStationKm:0.3 },
+  'BLACKTOWN': { postcode:'2148', state:'NSW', medianPrice:880000, weeklyRent:550, population:47000, popGrowth:8.0, medianIncomeWeekly:1650, incomeGrowth:25.0, vacancyRate:1.5, ownerOccRate:62.0, annualGrowth:7.2, daysOnMarket:25, annualSales:350, boomScore:55, zoning:'R2 Low Density', nearestStationKm:0.2 },
+  'PARRAMATTA': { postcode:'2150', state:'NSW', medianPrice:1200000, weeklyRent:650, population:30000, popGrowth:10.0, medianIncomeWeekly:1800, incomeGrowth:28.0, vacancyRate:1.2, ownerOccRate:55.0, annualGrowth:6.5, daysOnMarket:22, annualSales:280, boomScore:62, zoning:'R4 High Density', nearestStationKm:0.1 },
+  'LIVERPOOL': { postcode:'2170', state:'NSW', medianPrice:850000, weeklyRent:530, population:27000, popGrowth:7.5, medianIncomeWeekly:1550, incomeGrowth:23.0, vacancyRate:1.8, ownerOccRate:60.0, annualGrowth:6.8, daysOnMarket:28, annualSales:250, boomScore:50, zoning:'R3 Medium Density', nearestStationKm:0.3 },
+  'PENRITH': { postcode:'2750', state:'NSW', medianPrice:820000, weeklyRent:520, population:13000, popGrowth:6.5, medianIncomeWeekly:1500, incomeGrowth:22.0, vacancyRate:1.5, ownerOccRate:65.0, annualGrowth:7.0, daysOnMarket:30, annualSales:200, boomScore:48, zoning:'R2 Low Density', nearestStationKm:0.2 },
+  'GLENNING VALLEY': { postcode:'2261', state:'NSW', medianPrice:1255000, weeklyRent:750, population:4000, popGrowth:8.5, medianIncomeWeekly:2000, incomeGrowth:30.0, vacancyRate:0.6, ownerOccRate:82.0, annualGrowth:23.0, daysOnMarket:18, annualSales:60, boomScore:72, zoning:'R2 Low Density', nearestStationKm:3.5 },
+  'NEWCASTLE': { postcode:'2300', state:'NSW', medianPrice:1068000, weeklyRent:706, population:4500, popGrowth:5.0, medianIncomeWeekly:1600, incomeGrowth:20.0, vacancyRate:1.0, ownerOccRate:58.0, annualGrowth:5.5, daysOnMarket:28, annualSales:150, boomScore:55, zoning:'R3 Medium Density', nearestStationKm:0.5 },
+  'WOLLONGONG': { postcode:'2500', state:'NSW', medianPrice:1300000, weeklyRent:600, population:15000, popGrowth:4.5, medianIncomeWeekly:1700, incomeGrowth:22.0, vacancyRate:1.2, ownerOccRate:60.0, annualGrowth:5.0, daysOnMarket:30, annualSales:200, boomScore:50, zoning:'R3 Medium Density', nearestStationKm:0.3 },
+  'BANKSTOWN': { postcode:'2200', state:'NSW', medianPrice:1670000, weeklyRent:750, population:35000, popGrowth:9.0, medianIncomeWeekly:1500, incomeGrowth:22.0, vacancyRate:1.3, ownerOccRate:55.0, annualGrowth:26.3, daysOnMarket:20, annualSales:300, boomScore:70, zoning:'R3 Medium Density', nearestStationKm:0.1 },
+  'MOUNT DRUITT': { postcode:'2770', state:'NSW', medianPrice:750000, weeklyRent:500, population:15000, popGrowth:7.0, medianIncomeWeekly:1300, incomeGrowth:20.0, vacancyRate:1.5, ownerOccRate:55.0, annualGrowth:5.6, daysOnMarket:25, annualSales:180, boomScore:48, zoning:'R2 Low Density', nearestStationKm:0.2 },
+  'ST MARYS': { postcode:'2760', state:'NSW', medianPrice:800000, weeklyRent:520, population:12000, popGrowth:8.0, medianIncomeWeekly:1400, incomeGrowth:22.0, vacancyRate:1.3, ownerOccRate:58.0, annualGrowth:15.1, daysOnMarket:22, annualSales:160, boomScore:58, zoning:'R2 Low Density', nearestStationKm:0.1 },
+  'QUAKERS HILL': { postcode:'2763', state:'NSW', medianPrice:950000, weeklyRent:600, population:28000, popGrowth:5.5, medianIncomeWeekly:1700, incomeGrowth:24.0, vacancyRate:1.2, ownerOccRate:75.0, annualGrowth:4.5, daysOnMarket:28, annualSales:150, boomScore:50, zoning:'R2 Low Density', nearestStationKm:0.5 },
+  'CHITTAWAY BAY': { postcode:'2261', state:'NSW', medianPrice:900000, weeklyRent:650, population:3200, popGrowth:5.0, medianIncomeWeekly:1700, incomeGrowth:24.0, vacancyRate:0.9, ownerOccRate:75.0, annualGrowth:5.5, daysOnMarket:28, annualSales:80, boomScore:50, zoning:'R2 Low Density', nearestStationKm:3.5 },
+  'KILLARNEY VALE': { postcode:'2261', state:'NSW', medianPrice:880000, weeklyRent:640, population:6500, popGrowth:4.5, medianIncomeWeekly:1650, incomeGrowth:22.0, vacancyRate:1.0, ownerOccRate:72.0, annualGrowth:5.2, daysOnMarket:30, annualSales:100, boomScore:48, zoning:'R2 Low Density', nearestStationKm:3.8 },
+  'BATEAU BAY': { postcode:'2261', state:'NSW', medianPrice:950000, weeklyRent:680, population:7000, popGrowth:4.0, medianIncomeWeekly:1750, incomeGrowth:22.0, vacancyRate:0.8, ownerOccRate:76.0, annualGrowth:5.8, daysOnMarket:25, annualSales:110, boomScore:52, zoning:'R2 Low Density', nearestStationKm:4.5 },
+  'TERRIGAL': { postcode:'2260', state:'NSW', medianPrice:1350000, weeklyRent:780, population:8500, popGrowth:3.5, medianIncomeWeekly:2000, incomeGrowth:20.0, vacancyRate:0.7, ownerOccRate:80.0, annualGrowth:5.5, daysOnMarket:22, annualSales:120, boomScore:55, zoning:'R2 Low Density', nearestStationKm:6.0 },
+  'TOUKLEY': { postcode:'2263', state:'NSW', medianPrice:750000, weeklyRent:530, population:5500, popGrowth:5.5, medianIncomeWeekly:1400, incomeGrowth:22.0, vacancyRate:1.0, ownerOccRate:65.0, annualGrowth:6.5, daysOnMarket:28, annualSales:130, boomScore:50, zoning:'R2 Low Density', nearestStationKm:4.0 },
+  'UMINA BEACH': { postcode:'2257', state:'NSW', medianPrice:1000000, weeklyRent:680, population:8000, popGrowth:5.0, medianIncomeWeekly:1600, incomeGrowth:24.0, vacancyRate:0.8, ownerOccRate:70.0, annualGrowth:6.0, daysOnMarket:26, annualSales:140, boomScore:54, zoning:'R2 Low Density', nearestStationKm:1.5 },
+  'ETTALONG BEACH': { postcode:'2257', state:'NSW', medianPrice:1050000, weeklyRent:700, population:4500, popGrowth:4.5, medianIncomeWeekly:1650, incomeGrowth:22.0, vacancyRate:0.7, ownerOccRate:68.0, annualGrowth:5.8, daysOnMarket:24, annualSales:80, boomScore:52, zoning:'R2 Low Density', nearestStationKm:1.8 },
 };
 
-// Parse Address
+// ─── TOD / LMR Data ───
+const TOD_STATIONS = [
+  { name: 'Tuggerah Station', lat: -33.3075, lng: 151.4170, radius: 400 },
+  { name: 'Wyong Station', lat: -33.2840, lng: 151.4235, radius: 400 },
+  { name: 'Gosford Station', lat: -33.4245, lng: 151.3420, radius: 400 },
+  { name: 'Woy Woy Station', lat: -33.4855, lng: 151.3235, radius: 400 },
+];
+const LMR_CENTRES = [
+  { name: 'Westfield Tuggerah', lat: -33.3100, lng: 151.4140, radius: 800 },
+  { name: 'Erina Fair', lat: -33.4370, lng: 151.3880, radius: 800 },
+  { name: 'The Entrance Town Centre', lat: -33.3400, lng: 151.4950, radius: 800 },
+  { name: 'Wyong Town Centre', lat: -33.2840, lng: 151.4235, radius: 800 },
+  { name: 'Gosford Town Centre', lat: -33.4245, lng: 151.3420, radius: 800 },
+  { name: 'Woy Woy Town Centre', lat: -33.4855, lng: 151.3235, radius: 800 },
+  { name: 'Green Point', lat: -33.4610, lng: 151.3650, radius: 800 },
+];
+
+// ─── Helper Functions ───
+const fmt = (v) => new Intl.NumberFormat('en-AU', { style:'currency', currency:'AUD', minimumFractionDigits:0, maximumFractionDigits:0 }).format(v);
+const fmtK = (v) => v >= 1000000 ? `$${(v/1000000).toFixed(2)}M` : `$${Math.round(v/1000)}K`;
+const pct = (v, d=1) => `${v.toFixed(d)}%`;
+
 function parseAddress(address) {
-    const parts = address.trim().split(',').map(p => p.trim());
-    if (parts.length >= 2) {
-        const street = parts[0];
-        const suburb = parts[1]?.toUpperCase();
-        const rest = parts.slice(2).join(' ');
-        const stateMatch = rest.match(/([A-Z]{2})/);
-        const postcodeMatch = rest.match(/(\d{4})/);
+  const parts = address.trim().split(',').map(p => p.trim());
+  if (parts.length >= 2) {
+    const street = parts[0];
+    const rest = parts.slice(1).join(' ');
+    const stateMatch = rest.match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
+    const postcodeMatch = rest.match(/\b(\d{4})\b/);
+    const state = stateMatch ? stateMatch[1].toUpperCase() : 'NSW';
+    const postcode = postcodeMatch ? postcodeMatch[1] : '';
+    let suburb = rest.replace(stateMatch?.[0] || '', '').replace(postcodeMatch?.[0] || '', '').replace(/,/g, '').trim().toUpperCase();
+    return { street, suburb, state, postcode };
+  }
+  return null;
+}
 
-        return {
-            street,
-            suburb,
-            state: stateMatch ? stateMatch[1] : '',
-            postcode: postcodeMatch ? postcodeMatch[1] : ''
-        };
+function calcStampDuty(price) {
+  if (price <= 17000) return price * 0.0125;
+  if (price <= 35000) return 212.5 + (price - 17000) * 0.015;
+  if (price <= 93000) return 482.5 + (price - 35000) * 0.0175;
+  if (price <= 351000) return 1497.5 + (price - 93000) * 0.035;
+  if (price <= 1168000) return 10527.5 + (price - 351000) * 0.045;
+  return 47292.5 + (price - 1168000) * 0.055;
+}
+
+function calcMortgage(principal, annualRate, years, isIO) {
+  const monthlyRate = annualRate / 100 / 12;
+  if (isIO) return principal * monthlyRate;
+  if (monthlyRate === 0) return principal / (years * 12);
+  return principal * (monthlyRate * Math.pow(1 + monthlyRate, years * 12)) / (Math.pow(1 + monthlyRate, years * 12) - 1);
+}
+
+function getBadgeClass(level) {
+  if (['green','양호','성장','긍정','낮음','활발','안정적','프리미엄'].some(k => level.includes(k))) return 'badge-green';
+  if (['orange','보통','중간','확인','기본'].some(k => level.includes(k))) return 'badge-orange';
+  if (['red','높음','미해당','부적합'].some(k => level.includes(k))) return 'badge-red';
+  return 'badge-blue';
+}
+
+function Badge({ text, type }) {
+  const cls = type || getBadgeClass(text);
+  return <span className={`badge ${cls}`}>{text}</span>;
+}
+
+// ─── Scoring Algorithm ───
+function calcScores(d, cashflow) {
+  const demandScore = Math.min(10, Math.round(
+    (d.popGrowth > 5 ? 2 : 1) + (d.incomeGrowth > 20 ? 2 : 1) + (d.vacancyRate < 1 ? 2 : d.vacancyRate < 2 ? 1.5 : 1) + (d.ownerOccRate > 70 ? 2 : 1) + ((d.annualSales || 100) > 100 ? 2 : 1)
+  ));
+  const supplyScore = Math.min(10, Math.round(
+    (d.daysOnMarket < 25 ? 3 : d.daysOnMarket < 35 ? 2 : 1) + (d.boomScore > 55 ? 3 : d.boomScore > 45 ? 2 : 1) + 2
+  ));
+  const locationScore = Math.min(10, Math.round(
+    (d.nearestStationKm < 1 ? 3 : d.nearestStationKm < 3 ? 2 : 1) + 2 + 2
+  ));
+  const growthScore = Math.min(10, Math.round(
+    (d.annualGrowth > 8 ? 4 : d.annualGrowth > 5 ? 3 : 2) + 3
+  ));
+  const grossYield = (d.weeklyRent * 52) / d.medianPrice * 100;
+  const cashflowScore = Math.min(10, Math.round(
+    (grossYield > 5 ? 3 : grossYield > 4 ? 2 : 1) + (cashflow >= 0 ? 3 : cashflow > -15000 ? 2 : 1) + 1
+  ));
+  const landSize = 600; // default estimate
+  const devScore = Math.min(10, Math.round(
+    (landSize >= 450 ? 3 : 1) + (d.zoning?.includes('R2') ? 3 : 2) + 2
+  ));
+  const todScore = d.nearestStationKm <= 0.4 ? 9 : d.nearestStationKm <= 0.8 ? 7 : d.nearestStationKm <= 2 ? 5 : 3;
+  const riskScore = Math.min(10, Math.round(
+    (d.daysOnMarket < 30 ? 2 : 1) + (d.vacancyRate < 1.5 ? 2 : 1) + 2
+  ));
+
+  const items = [
+    { label: '수요 강도', score: demandScore },
+    { label: '공급 환경', score: supplyScore },
+    { label: '입지 / 인프라', score: locationScore },
+    { label: '자본 성장 잠재력', score: growthScore },
+    { label: '현금흐름', score: cashflowScore },
+    { label: '개발 잠재력', score: devScore },
+    { label: 'TOD/LMR 수혜', score: todScore },
+    { label: '리스크 수준', score: riskScore },
+  ];
+  const avg = items.reduce((s, i) => s + i.score, 0) / items.length;
+  return { items, avg };
+}
+
+// ─── Main App Component ───
+export default function App() {
+  const [address, setAddress] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState(null);
+  const [parsed, setParsed] = useState(null);
+  const [error, setError] = useState('');
+
+  // Adjustable financial parameters
+  const [purchasePrice, setPurchasePrice] = useState(0);
+  const [weeklyRent, setWeeklyRent] = useState(0);
+  const [lvr, setLvr] = useState(80);
+  const [interestRate, setInterestRate] = useState(6.0);
+  const [isIO, setIsIO] = useState(true);
+
+  const handleAnalyze = useCallback(async () => {
+    if (!address.trim()) return;
+    setLoading(true);
+    setError('');
+    setData(null);
+
+    const p = parseAddress(address);
+    if (!p || !p.suburb) {
+      setError('주소 형식을 확인해주세요. 예: 75 Lakedge Ave, Berkeley Vale NSW 2261');
+      setLoading(false);
+      return;
     }
-    return null;
-}
+    setParsed(p);
 
-// Format Currency
-function formatCurrency(value) {
-    return new Intl.NumberFormat('en-AU', {
-        style: 'currency',
-        currency: 'AUD',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0
-    }).format(value);
-}
+    // Try local DB first
+    const localData = SUBURB_DATA[p.suburb];
+    let fetchedData = null;
 
-// Format Number
-function formatNumber(value) {
-    return new Intl.NumberFormat('en-AU', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0
-    }).format(value);
-}
-
-// Calculate NSW Stamp Duty
-function calculateStampDuty(price) {
-    if (price <= 14500) return 1.25 * price / 100;
-    if (price <= 30600) return 181.25 + 2.5 * (price - 14500) / 100;
-    if (price <= 86000) return 585.62 + 3.5 * (price - 30600) / 100;
-    if (price <= 540000) return 2521.62 + 4.25 * (price - 86000) / 100;
-    return 19961.62 + 5.25 * (price - 540000) / 100;
-}
-
-// Research Hub Component
-function ResearchHub({ parsedAddress }) {
-    const [completed, setCompleted] = useState({});
-
-    if (!parsedAddress) {
-        return null;
+    try {
+      const params = new URLSearchParams({
+        address: address.trim(),
+        suburb: p.suburb,
+        postcode: p.postcode || (localData?.postcode || ''),
+        state: p.state || 'NSW',
+      });
+      const resp = await fetch(`/api/lookup?${params}`);
+      if (resp.ok) {
+        fetchedData = await resp.json();
+      }
+    } catch (e) {
+      console.log('API fetch failed, using local DB:', e);
     }
 
-    const { suburb, postcode, state } = parsedAddress;
-    const suburbLower = suburb.toLowerCase();
-    const stateLower = state.toLowerCase();
-    const suburbTitle = suburb.split(' ').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+    const stats = fetchedData?.suburbStats || localData || SUBURB_DATA['BERKELEY VALE'];
+    const postcode = p.postcode || fetchedData?.postcode || localData?.postcode || '2261';
+    const state = p.state || fetchedData?.state || localData?.state || 'NSW';
 
-    const toggleComplete = (key) => {
-        setCompleted(prev => ({ ...prev, [key]: !prev[key] }));
+    const finalData = {
+      ...stats,
+      postcode,
+      state,
+      suburb: p.suburb,
+      street: p.street,
+      dataSource: fetchedData?.dataSource || (localData ? 'database' : 'defaults'),
+      sources: fetchedData?.sources || [],
     };
 
-    const openLink = (url) => {
-        window.open(url, '_blank');
+    setData(finalData);
+    setPurchasePrice(finalData.medianPrice);
+    setWeeklyRent(finalData.weeklyRent);
+    setLvr(80);
+    setInterestRate(6.0);
+    setIsIO(true);
+    setLoading(false);
+  }, [address]);
+
+  // ─── Derived Financial Calculations ───
+  const finance = useMemo(() => {
+    if (!data) return null;
+    const price = purchasePrice;
+    const rent = weeklyRent;
+    const deposit = price * (1 - lvr / 100);
+    const loanAmount = price * (lvr / 100);
+    const stampDuty = Math.round(calcStampDuty(price));
+    const totalInitial = deposit + stampDuty;
+    const monthlyPayment = calcMortgage(loanAmount, interestRate, 30, isIO);
+    const annualMortgage = monthlyPayment * 12;
+
+    const grossRental = rent * 52;
+    const vacancyLoss = rent * 2;
+    const mgmtFee = Math.round(grossRental * 0.07);
+    const councilRates = 2000;
+    const waterRates = 1200;
+    const insurance = 1800;
+    const maintenance = 2000;
+    const netRental = grossRental - vacancyLoss - mgmtFee - councilRates - waterRates - insurance - maintenance;
+    const annualCashflow = netRental - annualMortgage;
+    const grossYield = (grossRental / price * 100);
+    const netYield = (netRental / price * 100);
+
+    return {
+      price, rent, deposit, loanAmount, stampDuty, totalInitial,
+      monthlyPayment, annualMortgage,
+      grossRental, vacancyLoss, mgmtFee, councilRates, waterRates, insurance, maintenance,
+      netRental, annualCashflow, grossYield, netYield,
     };
+  }, [data, purchasePrice, weeklyRent, lvr, interestRate, isIO]);
 
-    const categories = [
-        {
-            key: 'cat1',
-            num: '1',
-            korean: '지역 정보',
-            en: 'Demand, Supply',
-            desc: 'Market demand, supply trends',
-            links: [
-                { name: 'BoomScore', url: `https://app.boomscore.com.au/suburb-profile?locality=${suburb}&dwellingType=H&postcode=${postcode}` },
-                { name: 'HTag', url: 'https://www.htag.com.au/' }
-            ]
-        },
-        {
-            key: 'cat2',
-            num: '2',
-            korean: '지역 정보',
-            en: 'Property Type, Income',
-            desc: 'Land usage, income patterns',
-            links: [
-                { name: 'Landchecker', url: `https://landchecker.com.au/suburb/${suburbLower}-${stateLower}-${postcode}/` }
-            ]
-        },
-        {
-            key: 'cat3',
-            num: '3',
-            korean: '지역 정보',
-            en: 'Economy, Community',
-            desc: 'Economic indicators, community',
-            links: [
-                { name: 'Remplan', url: 'https://app.remplan.com.au/' }
-            ]
-        },
-        {
-            key: 'cat4',
-            num: '4',
-            korean: '포켓 정보',
-            en: 'Affluence, Income',
-            desc: 'Income levels, affluence metrics',
-            links: [
-                { name: 'Microburbs', url: `https://www.microburbs.com.au/${state}/${suburbTitle}+${postcode}` }
-            ]
-        },
-        {
-            key: 'cat5',
-            num: '5',
-            korean: '포켓 정보',
-            en: 'Crime, Socio-economic',
-            desc: 'Safety data, SEIFA scores',
-            links: [
-                { name: 'OpenStats', url: 'https://openstats.com.au/' }
-            ]
-        },
-        {
-            key: 'cat6',
-            num: '6',
-            korean: '매물 정보',
-            en: 'Pricing, Risk Factors',
-            desc: 'Property listings, flood/bushfire',
-            links: [
-                { name: 'Property.com.au', url: 'https://www.property.com.au/' },
-                { name: 'Domain', url: `https://www.domain.com.au/sale/?suburb=${suburbLower}-${stateLower}-${postcode}` },
-                { name: 'REA', url: `https://www.realestate.com.au/sold/in-${suburbTitle},+${state}+${postcode}/list-1` }
-            ]
-        },
-        {
-            key: 'cat7',
-            num: '7',
-            korean: '현금 흐름',
-            en: 'Cash Flow Analysis',
-            desc: 'ROI, yield calculations',
-            links: [
-                { name: 'SuburbsFinder', url: 'https://www.suburbsfinder.com.au/investment-property-cash-flow-calculator/' }
-            ]
-        }
-    ];
+  const scores = useMemo(() => {
+    if (!data || !finance) return null;
+    return calcScores(data, finance.annualCashflow);
+  }, [data, finance]);
 
+  // ─── Render: Address Input ───
+  if (!data) {
     return (
-        <div className="research-hub">
-            <div className="card-title">📚 Research Hub</div>
-            <p style={{ fontSize: '12px', color: '#666', marginBottom: '16px' }}>
-                Click to open research websites for {suburb} {postcode}, {state}. Toggle ✅ when data collected.
-            </p>
-            <div className="research-grid">
-                {categories.map(cat => (
-                    <div key={cat.key} className="research-card">
-                        <div className="research-header">
-                            <span className="research-category">Cat {cat.num}</span>
-                            <span className="research-korean">{cat.korean}</span>
-                        </div>
-                        <div className="research-korean" style={{ marginBottom: '6px' }}>{cat.en}</div>
-                        <div className="research-description">{cat.desc}</div>
-                        <div className="research-links">
-                            {cat.links.map((link, idx) => (
-                                <button
-                                    key={idx}
-                                    className="research-link-btn"
-                                    onClick={() => openLink(link.url)}
-                                >
-                                    🔗 {link.name}
-                                </button>
-                            ))}
-                        </div>
-                        <div
-                            className="research-status"
-                            onClick={() => toggleComplete(cat.key)}
-                        >
-                            <span className="status-toggle">{completed[cat.key] ? '✅' : '⬜'}</span>
-                            <span>{completed[cat.key] ? 'Done' : 'Pending'}</span>
-                        </div>
-                    </div>
+      <div className="container">
+        <div className="header" style={{ textAlign: 'center' }}>
+          <h1>Property Investment Analyzer</h1>
+          <p style={{ opacity: 0.9, fontSize: '15px' }}>NSW 부동산 투자 분석 리포트 자동 생성기</p>
+        </div>
+
+        <div className="section" style={{ maxWidth: 600, margin: '40px auto', textAlign: 'center' }}>
+          <h2 style={{ borderBottom: 'none', marginBottom: 24 }}>주소를 입력하세요</h2>
+          <input
+            type="text"
+            value={address}
+            onChange={e => setAddress(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAnalyze()}
+            placeholder="예: 75 Lakedge Ave, Berkeley Vale NSW 2261"
+            style={{
+              width: '100%', padding: '14px 16px', fontSize: '16px',
+              border: '2px solid #2E75B6', borderRadius: '10px', outline: 'none',
+              marginBottom: '16px',
+            }}
+          />
+          <button
+            onClick={handleAnalyze}
+            disabled={loading}
+            style={{
+              width: '100%', padding: '14px', fontSize: '18px', fontWeight: 700,
+              background: loading ? '#999' : 'linear-gradient(135deg, #1B3A5C, #2E75B6)',
+              color: 'white', border: 'none', borderRadius: '10px', cursor: loading ? 'wait' : 'pointer',
+            }}
+          >
+            {loading ? 'Analyzing...' : 'Analyze!'}
+          </button>
+          {error && <p style={{ color: '#c62828', marginTop: 12, fontSize: 14 }}>{error}</p>}
+
+          <div style={{ marginTop: 32, fontSize: 13, color: '#999', textAlign: 'left' }}>
+            <strong>내장 서브업 ({Object.keys(SUBURB_DATA).length}개):</strong><br/>
+            {Object.keys(SUBURB_DATA).map(s => s.charAt(0) + s.slice(1).toLowerCase()).join(', ')}
+            <br/><br/>
+            <em>위 목록에 없는 서브업도 입력 가능합니다 (API 자동 조회).</em>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Render: Full Report ───
+  const d = data;
+  const f = finance;
+  const sc = scores;
+  const todApplicable = d.nearestStationKm <= 0.4;
+  const lmrApplicable = d.nearestStationKm <= 0.8;
+  const region = d.postcode?.startsWith('22') || d.postcode?.startsWith('225') || d.postcode?.startsWith('226') ? 'Central Coast' : 'Greater Sydney';
+
+  const verdictText = sc.avg >= 7.5 ? '적극 투자 추천' :
+    sc.avg >= 6 ? '투자 검토 가치 있음 (조건부 긍정)' :
+    sc.avg >= 4.5 ? '보수적 접근 권장' : '투자 부적합';
+
+  return (
+    <div className="container">
+
+      {/* ── HEADER ── */}
+      <div className="header">
+        <h1>Property Investment Analysis</h1>
+        <div className="address">{address}</div>
+        <div className="meta">{region}, {d.state} | Analysis Date: {new Date().toLocaleDateString('en-AU', {month:'long', year:'numeric'})} | Data: {d.dataSource}</div>
+        <button
+          onClick={() => { setData(null); setAddress(''); }}
+          style={{ marginTop: 12, padding: '6px 20px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}
+        >
+          New Analysis
+        </button>
+      </div>
+
+      {/* ── 1. Property Overview ── */}
+      <div className="section">
+        <h2>1. 매물 개요 (Property Overview)</h2>
+        <div className="score-card">
+          <div className="score-item"><div className="value">{fmtK(d.medianPrice)}</div><div className="label">Median (House)</div></div>
+          <div className="score-item"><div className="value">${d.weeklyRent}/w</div><div className="label">Weekly Rent</div></div>
+          <div className="score-item"><div className="value">{d.boomScore}/100</div><div className="label">BoomScore</div></div>
+          <div className="score-item"><div className="value">{d.daysOnMarket}일</div><div className="label">Days on Market</div></div>
+          <div className="score-item"><div className="value">{d.annualSales}건</div><div className="label">Annual Sales</div></div>
+          <div className="score-item"><div className="value">{d.zoning}</div><div className="label">Zoning</div></div>
+        </div>
+        <table>
+          <thead><tr><th>항목</th><th>내용</th><th>평가</th></tr></thead>
+          <tbody>
+            <tr><td>지역 중간 가격</td><td>{fmt(d.medianPrice)}</td><td>{region} 수준</td></tr>
+            <tr><td>연간 자본 성장률</td><td>{pct(d.annualGrowth)}</td><td><Badge text={d.annualGrowth > 5 ? '양호' : '보통'} /></td></tr>
+            <tr><td>렌탈 수익률 (Gross)</td><td>{pct((d.weeklyRent * 52) / d.medianPrice * 100, 2)}</td><td><Badge text={(d.weeklyRent * 52 / d.medianPrice * 100) > 4.5 ? '양호' : '보통'} /></td></tr>
+            <tr><td>주간 렌트</td><td>${d.weeklyRent}/week</td><td>{region} 수준</td></tr>
+            <tr><td>BoomScore</td><td>{d.boomScore}/100 - {d.boomScore >= 60 ? 'Strong' : d.boomScore >= 45 ? 'Healthy' : 'Weak'} Market</td><td><Badge text="안정적" type="badge-blue" /></td></tr>
+            <tr><td>평균 매물 체류</td><td>{d.daysOnMarket}일</td><td><Badge text={d.daysOnMarket < 30 ? '빠른 거래' : '보통'} /></td></tr>
+            <tr><td>연간 매매 건수</td><td>{d.annualSales}건 (12개월)</td><td><Badge text={d.annualSales > 100 ? '활발' : '보통'} /></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── 2. Demand Analysis ── */}
+      <div className="section">
+        <h2>2. 수요 분석 (Demand Analysis)</h2>
+        <table>
+          <thead><tr><th>수요 지표</th><th>수치</th><th>트렌드</th><th>평가</th></tr></thead>
+          <tbody>
+            <tr><td>인구 (2021 Census)</td><td>{d.population?.toLocaleString()}명</td><td>성장률 +{pct(d.popGrowth)}</td><td><Badge text="성장" /></td></tr>
+            <tr><td>주간 가구 중위 소득</td><td>${d.medianIncomeWeekly?.toLocaleString()}/주</td><td>성장률 +{pct(d.incomeGrowth)}</td><td><Badge text={d.incomeGrowth > 25 ? '강한 성장' : '성장'} /></td></tr>
+            <tr><td>자가 거주율</td><td>{pct(d.ownerOccRate)}</td><td>{d.ownerOccRate > 70 ? '높은 자가율' : '적정 수준'}</td><td><Badge text={d.ownerOccRate > 70 ? '안정적' : '보통'} type="badge-blue" /></td></tr>
+            <tr><td>임대 비율</td><td>{pct(100 - d.ownerOccRate)}</td><td>적정 임차 수요</td><td><Badge text="안정적" type="badge-blue" /></td></tr>
+            <tr><td>공실률</td><td>{d.vacancyRate < 1 ? '< 1%' : pct(d.vacancyRate)}</td><td>{d.vacancyRate < 1 ? '극도로 타이트' : '적정'}</td><td><Badge text={d.vacancyRate < 1 ? '매우 양호' : '양호'} /></td></tr>
+          </tbody>
+        </table>
+        <div className="highlight">
+          <strong>수요 핵심 포인트:</strong> 인구 성장(+{pct(d.popGrowth)})과 소득 증가(+{pct(d.incomeGrowth)})이 동반되며, {d.vacancyRate < 1 ? '1% 미만의 극도로 낮은 공실률은 강한 렌탈 수요를 보여줍니다' : `${pct(d.vacancyRate)} 공실률은 적정 수준의 렌탈 시장을 나타냅니다`}.
+        </div>
+      </div>
+
+      {/* ── 3. Supply Analysis ── */}
+      <div className="section">
+        <h2>3. 공급 분석 (Supply Analysis)</h2>
+        <table>
+          <thead><tr><th>공급 지표</th><th>상태</th><th>상세 내용</th><th>투자 영향</th></tr></thead>
+          <tbody>
+            <tr><td>매물 재고 수준</td><td><Badge text={d.boomScore >= 55 ? '타이트' : '균형 (Healthy)'} type="badge-blue" /></td><td>BoomScore {d.boomScore}/100</td><td>{d.boomScore >= 55 ? '가격 상승 압력' : '안정적 시장'}</td></tr>
+            <tr><td>평균 거래 소요</td><td>{d.daysOnMarket}일</td><td>{d.daysOnMarket < 25 ? '빠른 거래' : '보통 수준'}</td><td>{d.daysOnMarket < 25 ? '높은 수요 반영' : '적정 시장'}</td></tr>
+            <tr><td>연간 거래량</td><td>{d.annualSales}건</td><td>{d.annualSales > 150 ? '활발한 거래' : '적정 거래'}</td><td>{d.annualSales > 150 ? '유동성 양호' : '유동성 적정'}</td></tr>
+            <tr><td>조닝</td><td>{d.zoning}</td><td>{d.zoning?.includes('R2') ? '단독주택, 듀얼 오큐펀시 허용' : '중밀도 이상 개발 가능'}</td><td>개발 유연성</td></tr>
+          </tbody>
+        </table>
+        {d.zoning?.includes('R2') && (
+          <div className="highlight">
+            <strong>개발 잠재력:</strong> R2 Low Density 구역에서 2024년 7월 NSW Stage 1 정책으로 Dual Occupancy / Granny Flat 개발이 가능합니다. 최소 요건: 450m&sup2;, 폭 12m, FSR 0.65:1, 최대 높이 9.5m.
+          </div>
+        )}
+      </div>
+
+      {/* ── 4. Location & Infrastructure ── */}
+      <div className="section">
+        <h2>4. 입지 및 인프라 (Location & Infrastructure)</h2>
+        <table>
+          <thead><tr><th>카테고리</th><th>항목</th><th>거리/접근성</th><th>평가</th></tr></thead>
+          <tbody>
+            <tr><td><strong>기차역</strong></td><td>최근접역</td><td>약 {d.nearestStationKm}km</td><td><Badge text={d.nearestStationKm < 1 ? '양호' : d.nearestStationKm < 3 ? '보통' : '보통'} /></td></tr>
+            <tr><td><strong>조닝</strong></td><td>{d.zoning}</td><td>-</td><td><Badge text="확인됨" type="badge-blue" /></td></tr>
+            <tr><td><strong>인구</strong></td><td>{d.population?.toLocaleString()}명</td><td>성장률 +{pct(d.popGrowth)}</td><td><Badge text="성장" /></td></tr>
+            <tr><td><strong>중위소득</strong></td><td>${d.medianIncomeWeekly?.toLocaleString()}/주</td><td>성장률 +{pct(d.incomeGrowth)}</td><td><Badge text="양호" /></td></tr>
+          </tbody>
+        </table>
+        <div className="highlight">
+          <strong>인프라 참고:</strong> {region} 지역의 지속적인 인프라 투자와 인구 유입이 부동산 가치 상승을 지지합니다.
+        </div>
+      </div>
+
+      {/* ── 5. TOD / LMR Analysis ── */}
+      <div className="section">
+        <h2>5. TOD / LMR Housing Policy 해당 여부 분석</h2>
+        <p style={{ fontSize: 14, marginBottom: 12 }}>
+          NSW 정부의 <strong>Planning System Reforms Act 2025</strong>에 따라, 주택 공급 가속화를 위한 두 가지 핵심 정책이 시행 중입니다.
+        </p>
+
+        <h3>5.1 Transport Oriented Development (TOD) Program</h3>
+        <table>
+          <thead><tr><th>항목</th><th>기준</th><th>매물 현황</th><th>해당 여부</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>TOD 적용 범위</strong></td>
+              <td>지정 역으로부터 <strong>400m</strong> 이내</td>
+              <td>최근접 역까지 약 {d.nearestStationKm}km</td>
+              <td><Badge text={todApplicable ? '해당' : '미해당'} type={todApplicable ? 'badge-green' : 'badge-red'} /></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>5.2 Low and Mid-Rise (LMR) Housing Policy</h3>
+        <table>
+          <thead><tr><th>항목</th><th>기준</th><th>매물 현황</th><th>해당 여부</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>LMR 적용 범위</strong></td>
+              <td>지정 센터/역으로부터 <strong>800m</strong> 이내</td>
+              <td>최근접 역까지 약 {d.nearestStationKm}km</td>
+              <td><Badge text={lmrApplicable ? '해당' : '미해당'} type={lmrApplicable ? 'badge-green' : 'badge-red'} /></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style={{
+          background: todApplicable || lmrApplicable
+            ? 'linear-gradient(135deg, #e8f5e9, #e3f2fd)'
+            : 'linear-gradient(135deg, #fff3e0, #fce4ec)',
+          padding: 16, borderRadius: 10, margin: '16px 0',
+          borderLeft: `4px solid ${todApplicable || lmrApplicable ? '#2e7d32' : '#e65100'}`
+        }}>
+          <strong style={{ color: todApplicable || lmrApplicable ? '#2e7d32' : '#c62828' }}>
+            {todApplicable && lmrApplicable ? '✅ TOD & LMR 모두 해당' :
+             todApplicable ? '✅ TOD 해당 / LMR 미해당' :
+             lmrApplicable ? '✅ LMR 해당 / TOD 미해당' :
+             '⚠️ TOD / LMR 모두 미해당'}
+          </strong>
+          <p style={{ fontSize: 13, marginTop: 6 }}>
+            {!todApplicable && !lmrApplicable
+              ? `${parsed?.street || ''}, ${d.suburb}는 최근접 역까지 약 ${d.nearestStationKm}km 떨어져 있어 TOD(400m) 및 LMR(800m) 기준 모두 충족하지 못합니다. 단, ${d.zoning?.includes('R2') ? 'NSW Stage 1 정책에 따라 R2 구역 Dual Occ/Granny Flat은 LMR과 무관하게 허용됩니다.' : '기존 조닝 규정이 적용됩니다.'}`
+              : todApplicable
+              ? `TOD 400m 반경 내 위치로 고밀도 개발 가능! 자동적 밀도 상향 및 평가 기간 단축 혜택이 적용됩니다.`
+              : `LMR 800m 반경 내 위치로 Low-Mid Rise 개발이 가능합니다. R2 구역의 경우 Dual Occ, Terraces, Townhouses 허용.`}
+          </p>
+        </div>
+
+        {region === 'Central Coast' && (
+          <>
+            <h3>5.3 Central Coast TOD/LMR 지정 현황</h3>
+            <table>
+              <thead><tr><th>지정 유형</th><th>지정 위치</th><th>비고</th></tr></thead>
+              <tbody>
+                {TOD_STATIONS.map(s => (
+                  <tr key={s.name}><td><Badge text="TOD" type="badge-blue" /></td><td>{s.name}</td><td>TOD 지정역</td></tr>
                 ))}
-            </div>
+                {LMR_CENTRES.map(c => (
+                  <tr key={c.name}><td><Badge text="LMR" type="badge-orange" /></td><td>{c.name}</td><td>LMR 지정지</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+      </div>
 
-            <div style={{ marginTop: '16px', padding: '12px', background: '#F0F5FB', borderRadius: '8px', fontSize: '12px', color: '#666' }}>
-                <strong>Additional Resources:</strong>
-                <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {state === 'NSW' && <a href="https://www.planningportal.nsw.gov.au/spatialviewer/#/find-a-property/address" target="_blank" rel="noopener" className="research-link-btn" style={{ flex: 1 }}>NSW Planning</a>}
-                    <a href={`https://sqmresearch.com.au/weekly-rents.php?postcode=${postcode}&t=1`} target="_blank" rel="noopener" className="research-link-btn" style={{ flex: 1 }}>SQM Rents</a>
-                    <a href="https://www.ratemyagent.com.au/" target="_blank" rel="noopener" className="research-link-btn" style={{ flex: 1 }}>RateMyAgent</a>
-                    <a href="https://www.myschool.edu.au/" target="_blank" rel="noopener" className="research-link-btn" style={{ flex: 1 }}>MySchool</a>
-                    <a href="https://www.byda.com.au/" target="_blank" rel="noopener" className="research-link-btn" style={{ flex: 1 }}>Before You Dig</a>
-                </div>
+      {/* ── 6. Cash Flow Analysis (INTERACTIVE) ── */}
+      <div className="section">
+        <h2>6. 현금흐름 분석 (Cash Flow Analysis)</h2>
+
+        {/* Parameter Controls */}
+        <div style={{ background: '#f0f4ff', padding: 16, borderRadius: 10, marginBottom: 16, border: '1px solid #2E75B6' }}>
+          <h3 style={{ marginTop: 0, marginBottom: 12 }}>Financial Parameters (조정 가능)</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#1B3A5C' }}>매입가격</label>
+              <input type="number" value={purchasePrice} onChange={e => setPurchasePrice(Number(e.target.value))}
+                style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 14 }} step={10000} />
             </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#1B3A5C' }}>주간 렌트 ($)</label>
+              <input type="number" value={weeklyRent} onChange={e => setWeeklyRent(Number(e.target.value))}
+                style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 14 }} step={10} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#1B3A5C' }}>LVR (%)</label>
+              <input type="range" min={50} max={95} value={lvr} onChange={e => setLvr(Number(e.target.value))}
+                style={{ width: '100%' }} />
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#1B3A5C' }}>{lvr}%</span>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#1B3A5C' }}>이자율 (%)</label>
+              <input type="number" value={interestRate} onChange={e => setInterestRate(Number(e.target.value))}
+                style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 14 }} step={0.1} min={0} max={15} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#1B3A5C' }}>상환 방식</label>
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                <button onClick={() => setIsIO(true)}
+                  style={{ flex: 1, padding: '8px', border: `2px solid ${isIO ? '#2E75B6' : '#ccc'}`, borderRadius: 6, background: isIO ? '#e3f2fd' : 'white', fontWeight: isIO ? 700 : 400, cursor: 'pointer', fontSize: 13 }}>
+                  IO (이자만)
+                </button>
+                <button onClick={() => setIsIO(false)}
+                  style={{ flex: 1, padding: '8px', border: `2px solid ${!isIO ? '#2E75B6' : '#ccc'}`, borderRadius: 6, background: !isIO ? '#e3f2fd' : 'white', fontWeight: !isIO ? 700 : 400, cursor: 'pointer', fontSize: 13 }}>
+                  P&I (원리금)
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-    );
-}
 
-// Main App
-export default function PropertyAnalyzer() {
-    const [address, setAddress] = useState('');
-    const [parsedAddress, setParsedAddress] = useState(null);
-    const [suburbData, setSuburbData] = useState(null);
-
-    const [beds, setBeds] = useState(3);
-    const [baths, setBaths] = useState(2);
-    const [cars, setCars] = useState(2);
-    const [landSize, setLandSize] = useState(450);
-    const [propertyType, setPropertyType] = useState('House');
-    const [listedPrice, setListedPrice] = useState(0);
-
-    const [purchasePrice, setPurchasePrice] = useState(800000);
-    const [weeklyRent, setWeeklyRent] = useState(600);
-    const [lvr, setLvr] = useState(80);
-    const [interestRate, setInterestRate] = useState(6.5);
-    const [repaymentType, setRepaymentType] = useState('P&I');
-
-    const [medianPrice, setMedianPrice] = useState(0);
-    const [medianRent, setMedianRent] = useState(0);
-    const [population, setPopulation] = useState(0);
-    const [popGrowth, setPopGrowth] = useState(0);
-    const [medianIncome, setMedianIncome] = useState(0);
-    const [incomeGrowth, setIncomeGrowth] = useState(0);
-    const [seifaScore, setSeifaScore] = useState(0);
-
-    const [floodZone, setFloodZone] = useState(false);
-    const [bushfireZone, setBushfireZone] = useState('No');
-    const [heritage, setHeritage] = useState(false);
-
-    const [showReport, setShowReport] = useState(false);
-    const fileInputRef = useRef(null);
-
-    // Handle Address Change
-    const handleAddressChange = (e) => {
-        const val = e.target.value;
-        setAddress(val);
-
-        if (val.length > 5) {
-            const parsed = parseAddress(val);
-            if (parsed) {
-                setParsedAddress(parsed);
-
-                const suburbKey = parsed.suburb?.toUpperCase();
-                if (SUBURB_DATA[suburbKey]) {
-                    const data = SUBURB_DATA[suburbKey];
-                    setSuburbData(data);
-                    setPurchasePrice(data.medianPrice);
-                    setWeeklyRent(data.weeklyRent);
-                    setMedianPrice(data.medianPrice);
-                    setMedianRent(data.weeklyRent);
-                    setPopulation(data.population);
-                    setPopGrowth(data.popGrowth);
-                    setMedianIncome(data.medianIncomeWeekly * 52);
-                    setIncomeGrowth(data.incomeGrowth);
-                } else {
-                    setSuburbData(null);
-                    resetData();
-                }
-            }
-        }
-    };
-
-    const resetData = () => {
-        setMedianPrice(0);
-        setMedianRent(0);
-        setPopulation(0);
-        setPopGrowth(0);
-        setMedianIncome(0);
-        setIncomeGrowth(0);
-        setSeifaScore(0);
-    };
-
-    const handleQuickFill = () => {
-        if (suburbData) {
-            setPurchasePrice(suburbData.medianPrice);
-            setWeeklyRent(suburbData.weeklyRent);
-            setMedianPrice(suburbData.medianPrice);
-            setMedianRent(suburbData.weeklyRent);
-            setPopulation(suburbData.population);
-            setPopGrowth(suburbData.popGrowth);
-            setMedianIncome(suburbData.medianIncomeWeekly * 52);
-            setIncomeGrowth(suburbData.incomeGrowth);
-        }
-    };
-
-    // CSV Download
-    const downloadCSV = () => {
-        const headers = ['suburb', 'postcode', 'state', 'medianPrice', 'weeklyRent', 'population', 'popGrowth', 'medianIncomeWeekly', 'incomeGrowth', 'vacancyRate', 'ownerOccRate', 'annualGrowth', 'daysOnMarket', 'annualSales', 'boomScore', 'zoning', 'nearestStationKm'];
-        const csv = [headers.join(',')].join('\n');
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'property_template.csv';
-        a.click();
-        window.URL.revokeObjectURL(url);
-    };
-
-    // Export Current Data
-    const exportCurrent = () => {
-        if (!parsedAddress) return;
-        const row = [parsedAddress.suburb, parsedAddress.postcode, parsedAddress.state, purchasePrice, weeklyRent, population, popGrowth, medianIncome / 52, incomeGrowth, '', '', '', '', '', '', '', ''];
-        const csv = 'suburb,postcode,state,medianPrice,weeklyRent,population,popGrowth,medianIncomeWeekly,incomeGrowth,vacancyRate,ownerOccRate,annualGrowth,daysOnMarket,annualSales,boomScore,zoning,nearestStationKm\n' + row.join(',');
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${parsedAddress.suburb}_data.csv`;
-        a.click();
-        window.URL.revokeObjectURL(url);
-    };
-
-    // Calculate Financial Metrics
-    const loanAmount = (purchasePrice * lvr) / 100;
-    const stampDuty = calculateStampDuty(purchasePrice);
-    const totalInvestment = purchasePrice + stampDuty;
-    const equity = purchasePrice - loanAmount;
-
-    const annualRent = weeklyRent * 52;
-    const monthlyRent = annualRent / 12;
-
-    let monthlyRepayment = 0;
-    if (loanAmount > 0) {
-        const monthlyRate = interestRate / 100 / 12;
-        const numPayments = 30 * 12;
-
-        if (repaymentType === 'IO') {
-            monthlyRepayment = loanAmount * monthlyRate;
-        } else {
-            monthlyRepayment = (loanAmount * monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / (Math.pow(1 + monthlyRate, numPayments) - 1);
-        }
-    }
-
-    const annualRepayment = monthlyRepayment * 12;
-
-    // Expenses
-    const councilRates = (purchasePrice * 0.006) / 12;
-    const waterRates = 30;
-    const insurance = (purchasePrice * 0.004) / 12;
-    const maintenanceFund = purchasePrice > 1000000 ? 100 : purchasePrice > 500000 ? 75 : 50;
-    const vacancyLoss = monthlyRent * 0.08;
-    const bodyCorpFees = propertyType === 'Unit' ? 200 : 0;
-
-    const totalMonthlyExpenses = councilRates + waterRates + insurance + maintenanceFund + monthlyRepayment + vacancyLoss + bodyCorpFees;
-    const totalAnnualExpenses = totalMonthlyExpenses * 12;
-
-    const monthlyNetCashflow = monthlyRent - totalMonthlyExpenses;
-    const annualNetCashflow = annualRent - totalAnnualExpenses;
-    const netYield = (annualNetCashflow / purchasePrice) * 100;
-    const grossYield = (annualRent / purchasePrice) * 100;
-
-    // Scenarios
-    const scenarios = useMemo(() => {
-        const calcScenario = (price, rent, rate, lvr_, type) => {
-            const loan = (price * lvr_) / 100;
-            const monthlyRate = rate / 100 / 12;
-            const numPayments = 30 * 12;
-
-            let monthlyPay = 0;
-            if (loan > 0) {
-                if (type === 'IO') {
-                    monthlyPay = loan * monthlyRate;
-                } else {
-                    monthlyPay = (loan * monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / (Math.pow(1 + monthlyRate, numPayments) - 1);
-                }
-            }
-
-            const monthlyR = rent * 4.33;
-            const councilR = (price * 0.006) / 12;
-            const water = 30;
-            const insur = (price * 0.004) / 12;
-            const maint = price > 1000000 ? 100 : price > 500000 ? 75 : 50;
-            const vacancy = monthlyR * 0.08;
-
-            const totalExp = councilR + water + insur + maint + monthlyPay + vacancy;
-            const monthlyNet = monthlyR - totalExp;
-            const annualNet = monthlyNet * 12;
-            const yield_ = (annualNet / price) * 100;
-
-            return { monthlyNet, annualNet, yield: yield_ };
-        };
-
-        return [
-            { name: 'Current', rate: interestRate, lvr: lvr, type: repaymentType, ...calcScenario(purchasePrice, weeklyRent, interestRate, lvr, repaymentType) },
-            { name: 'Rate -1%', rate: Math.max(2, interestRate - 1), lvr: lvr, type: repaymentType, ...calcScenario(purchasePrice, weeklyRent, Math.max(2, interestRate - 1), lvr, repaymentType) },
-            { name: 'Rate +1%', rate: interestRate + 1, lvr: lvr, type: repaymentType, ...calcScenario(purchasePrice, weeklyRent, interestRate + 1, lvr, repaymentType) },
-            { name: repaymentType === 'IO' ? 'P&I' : 'IO', rate: interestRate, lvr: lvr, type: repaymentType === 'IO' ? 'P&I' : 'IO', ...calcScenario(purchasePrice, weeklyRent, interestRate, lvr, repaymentType === 'IO' ? 'P&I' : 'IO') },
-            { name: 'LVR 90%', rate: interestRate, lvr: 90, type: repaymentType, ...calcScenario(purchasePrice, weeklyRent, interestRate, 90, repaymentType) },
-            { name: 'Rent +10%', rate: interestRate, lvr: lvr, type: repaymentType, ...calcScenario(purchasePrice, weeklyRent * 1.1, interestRate, lvr, repaymentType) },
-        ];
-    }, [purchasePrice, weeklyRent, interestRate, lvr, repaymentType]);
-
-    // Calculate Scoring
-    const scores = useMemo(() => {
-        let demand = 3;
-        if (suburbData) {
-            if (suburbData.popGrowth > 5) demand += 2;
-            if (suburbData.incomeGrowth > 20) demand += 2;
-            if (suburbData.vacancyRate < 1.5) demand += 2;
-            if (suburbData.daysOnMarket < 30) demand += 2;
-            if (suburbData.annualSales > 100) demand += 2;
-        }
-        demand = Math.min(10, demand);
-
-        let supply = 3;
-        if (suburbData) {
-            if (suburbData.boomScore >= 40 && suburbData.boomScore <= 65) supply += 2;
-            if (landSize >= 450) supply += 3;
-        }
-        supply = Math.min(10, supply);
-
-        let location = 4;
-        if (suburbData) {
-            if (suburbData.nearestStationKm < 0.4) location = 10;
-            else if (suburbData.nearestStationKm < 2) location = 8;
-            else if (suburbData.nearestStationKm < 5) location = 6;
-        }
-
-        let growth = 4;
-        if (suburbData) {
-            if (suburbData.annualGrowth > 7) growth = 9;
-            else if (suburbData.annualGrowth > 4) growth = 7;
-        }
-
-        let cashflow = 3;
-        if (grossYield > 5) cashflow = 8;
-        else if (grossYield > 4) cashflow = 6;
-        else if (grossYield > 3) cashflow = 4;
-
-        let development = landSize >= 450 ? 8 : 4;
-
-        let tod = 3;
-        if (suburbData) {
-            if (suburbData.nearestStationKm <= 0.4) tod = 9;
-            else if (suburbData.nearestStationKm <= 0.8) tod = 7;
-        }
-
-        let risk = 6;
-        if (floodZone) risk -= 2;
-        if (bushfireZone !== 'No') risk -= 1;
-        if (heritage) risk -= 1;
-        risk = Math.max(1, risk);
-
-        const overall = Math.round((demand + supply + location + growth + cashflow + development + tod + risk) / 8);
-
-        return { demand, supply, location, growth, cashflow, development, tod, risk, overall };
-    }, [suburbData, landSize, grossYield, floodZone, bushfireZone, heritage]);
-
-    const todEligible = suburbData && suburbData.nearestStationKm <= 0.4;
-    const lmrEligible = suburbData && suburbData.nearestStationKm <= 0.8;
-
-    return (
-        <div className="container">
-            {/* Header */}
-            <div className="header">
-                <h1>🏠 Property Investment Analyzer</h1>
-                <p>Comprehensive analysis tool for Australian residential property investments</p>
-            </div>
-
-            <div className="main-grid">
-                <div>
-                    {/* Address Lookup */}
-                    <div className="card">
-                        <div className="card-title">📍 Property Address</div>
-                        <div className="address-section">
-                            <input
-                                type="text"
-                                className="address-input"
-                                placeholder="e.g., 75 Lakedge Avenue, Berkeley Vale, NSW 2261"
-                                value={address}
-                                onChange={handleAddressChange}
-                            />
-                        </div>
-
-                        {parsedAddress && (
-                            <>
-                                <div className="parsed-address">
-                                    <strong>{parsedAddress.street}</strong><br/>
-                                    {parsedAddress.suburb} {parsedAddress.state} {parsedAddress.postcode}
-                                    {suburbData && <div style={{ marginTop: '6px', color: '#2E75B6', fontSize: '11px' }}>✓ Data found in database</div>}
-                                </div>
-
-                                <div className="search-buttons">
-                                    <button className="search-btn" onClick={() => window.open(`https://www.domain.com.au/sale/?suburb=${parsedAddress.suburb.toLowerCase()}-${parsedAddress.state.toLowerCase()}-${parsedAddress.postcode}`, '_blank')}>🔍 Domain</button>
-                                    <button className="search-btn" onClick={() => window.open(`https://www.realestate.com.au/sold/in-${parsedAddress.suburb},+${parsedAddress.state}+${parsedAddress.postcode}/list-1`, '_blank')}>🔍 REA</button>
-                                    <button className="search-btn" onClick={() => window.open(`https://www.propertyvalue.com.au/suburb/${parsedAddress.suburb}-${parsedAddress.postcode}-${parsedAddress.state.toLowerCase()}`, '_blank')}>🔍 PropertyValue</button>
-                                </div>
-
-                                {suburbData && (
-                                    <button className="quick-fill-btn" onClick={handleQuickFill}>
-                                        ⚡ Quick Fill from Database
-                                    </button>
-                                )}
-                                {!suburbData && (
-                                    <div style={{ padding: '12px', background: '#FFF3CD', borderRadius: '8px', fontSize: '12px', color: '#856404' }}>
-                                        No preset data available. Use Research Hub above to collect data.
-                                    </div>
-                                )}
-                            </>
-                        )}
-                    </div>
-
-                    {/* Research Hub */}
-                    {parsedAddress && <ResearchHub parsedAddress={parsedAddress} />}
-
-                    {/* Property Details */}
-                    <div className="card">
-                        <div className="card-title">🏘️ Property Details</div>
-                        <div className="details-grid">
-                            <div className="form-group">
-                                <label className="form-label">Beds <span className="form-label-korean">(침실)</span></label>
-                                <input type="number" min="1" max="10" value={beds} onChange={(e) => setBeds(parseInt(e.target.value) || 0)} />
-                            </div>
-                            <div className="form-group">
-                                <label className="form-label">Baths <span className="form-label-korean">(욕실)</span></label>
-                                <input type="number" min="1" max="5" value={baths} onChange={(e) => setBaths(parseInt(e.target.value) || 0)} />
-                            </div>
-                            <div className="form-group">
-                                <label className="form-label">Cars <span className="form-label-korean">(주차)</span></label>
-                                <input type="number" min="0" max="5" value={cars} onChange={(e) => setCars(parseInt(e.target.value) || 0)} />
-                            </div>
-                            <div className="form-group">
-                                <label className="form-label">Land (m²) <span className="form-label-korean">(토지 면적)</span></label>
-                                <input type="number" min="100" step="50" value={landSize} onChange={(e) => setLandSize(parseInt(e.target.value) || 0)} />
-                            </div>
-                            <div className="form-group">
-                                <label className="form-label">Property Type <span className="form-label-korean">(물건 유형)</span></label>
-                                <select value={propertyType} onChange={(e) => setPropertyType(e.target.value)}>
-                                    <option>House</option>
-                                    <option>Unit</option>
-                                    <option>Townhouse</option>
-                                    <option>Land</option>
-                                </select>
-                            </div>
-                            <div className="form-group">
-                                <label className="form-label">Listed Price <span className="form-label-korean">(공시 가격)</span></label>
-                                <input type="number" step="10000" value={listedPrice} onChange={(e) => setListedPrice(parseInt(e.target.value) || 0)} />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Data Entry Sections */}
-                    {parsedAddress && (
-                        <div className="card">
-                            <div className="card-title">📊 Research Data Entry</div>
-
-                            <div className="data-section">
-                                <div className="data-section-title">
-                                    Category 1: Demand, Supply
-                                    <a href="https://app.boomscore.com.au" target="_blank" rel="noopener" className="data-section-link">BoomScore ↗</a>
-                                </div>
-                                <div className="section-grid">
-                                    <div className="form-group">
-                                        <label className="form-label">BoomScore</label>
-                                        <input type="number" min="0" max="100" value={0} placeholder="0-100" />
-                                    </div>
-                                    <div className="form-group">
-                                        <label className="form-label">Days on Market</label>
-                                        <input type="number" value={0} placeholder="days" />
-                                    </div>
-                                    <div className="form-group">
-                                        <label className="form-label">Annual Sales</label>
-                                        <input type="number" value={0} placeholder="count" />
-                                    </div>
-                                    <div className="form-group">
-                                        <label className="form-label">Vacancy Rate %</label>
-                                        <input type="number" step="0.1" value={0} placeholder="%" />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="data-section">
-                                <div className="data-section-title">
-                                    Category 2: Property Type, Income
-                                    <a href="https://landchecker.com.au" target="_blank" rel="noopener" className="data-section-link">Landchecker ↗</a>
-                                </div>
-                                <div className="section-grid">
-                                    <div className="form-group">
-                                        <label className="form-label">Median Price</label>
-                                        <input type="number" step="10000" value={medianPrice} onChange={(e) => setMedianPrice(parseInt(e.target.value) || 0)} placeholder="$" />
-                                    </div>
-                                    <div className="form-group">
-                                        <label className="form-label">Weekly Rent</label>
-                                        <input type="number" step="10" value={medianRent} onChange={(e) => setMedianRent(parseInt(e.target.value) || 0)} placeholder="$" />
-                                    </div>
-                                    <div className="form-group">
-                                        <label className="form-label">Owner Occupier %</label>
-                                        <input type="number" step="0.1" value={0} placeholder="%" />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="data-section">
-                                <div className="data-section-title">
-                                    Category 4-5: Population, Income, SEIFA
-                                    <a href="https://www.microburbs.com.au" target="_blank" rel="noopener" className="data-section-link">Microburbs ↗</a>
-                                </div>
-                                <div className="section-grid">
-                                    <div className="form-group">
-                                        <label className="form-label">Population</label>
-                                        <input type="number" value={population} onChange={(e) => setPopulation(parseInt(e.target.value) || 0)} placeholder="people" />
-                                    </div>
-                                    <div className="form-group">
-                                        <label className="form-label">Pop Growth %</label>
-                                        <input type="number" step="0.1" value={popGrowth} onChange={(e) => setPopGrowth(parseFloat(e.target.value) || 0)} placeholder="%" />
-                                    </div>
-                                    <div className="form-group">
-                                        <label className="form-label">Median Income (Annual)</label>
-                                        <input type="number" step="1000" value={medianIncome} onChange={(e) => setMedianIncome(parseInt(e.target.value) || 0)} placeholder="$" />
-                                    </div>
-                                    <div className="form-group">
-                                        <label className="form-label">Income Growth %</label>
-                                        <input type="number" step="0.1" value={incomeGrowth} onChange={(e) => setIncomeGrowth(parseFloat(e.target.value) || 0)} placeholder="%" />
-                                    </div>
-                                    <div className="form-group">
-                                        <label className="form-label">SEIFA Score</label>
-                                        <input type="number" step="1" value={seifaScore} onChange={(e) => setSeifaScore(parseInt(e.target.value) || 0)} placeholder="score" />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="data-section">
-                                <div className="data-section-title">
-                                    Category 6: Risk Factors
-                                    <a href="https://www.property.com.au" target="_blank" rel="noopener" className="data-section-link">Property.com.au ↗</a>
-                                </div>
-                                <div className="section-grid">
-                                    <div className="form-group">
-                                        <label className="form-label">Flood Zone</label>
-                                        <select value={floodZone ? 'Yes' : 'No'} onChange={(e) => setFloodZone(e.target.value === 'Yes')}>
-                                            <option>No</option>
-                                            <option>Yes</option>
-                                        </select>
-                                    </div>
-                                    <div className="form-group">
-                                        <label className="form-label">Bushfire Zone</label>
-                                        <select value={bushfireZone} onChange={(e) => setBushfireZone(e.target.value)}>
-                                            <option>No</option>
-                                            <option>BAL-12.5</option>
-                                            <option>BAL-19</option>
-                                            <option>BAL-29</option>
-                                            <option>BAL-40</option>
-                                        </select>
-                                    </div>
-                                    <div className="form-group">
-                                        <label className="form-label">Heritage Listed</label>
-                                        <select value={heritage ? 'Yes' : 'No'} onChange={(e) => setHeritage(e.target.value === 'Yes')}>
-                                            <option>No</option>
-                                            <option>Yes</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Key Parameters */}
-                    <div className="key-parameters">
-                        <div className="card-title" style={{ marginBottom: '16px', marginTop: 0, fontSize: '16px' }}>⚙️ Key Parameters</div>
-
-                        <div className="param-row">
-                            <div className="param-item">
-                                <label className="param-label">① 매입 가격 <div className="param-korean">Purchase Price</div></label>
-                                <input type="number" step="10000" value={purchasePrice} onChange={(e) => setPurchasePrice(parseInt(e.target.value) || 0)} className="param-input" />
-                            </div>
-                            <div className="param-item">
-                                <label className="param-label">② 주간 렌트 <div className="param-korean">Weekly Rent</div></label>
-                                <input type="number" step="10" value={weeklyRent} onChange={(e) => setWeeklyRent(parseInt(e.target.value) || 0)} className="param-input" />
-                            </div>
-                        </div>
-
-                        <div className="param-row">
-                            <div className="param-item">
-                                <label className="param-label">③ LVR % <div className="param-korean">Loan to Value</div></label>
-                                <div className="slider-container">
-                                    <input type="range" min="50" max="95" value={lvr} onChange={(e) => setLvr(parseInt(e.target.value))} style={{ width: '100%' }} />
-                                    <span className="slider-value">{lvr}%</span>
-                                </div>
-                            </div>
-                            <div className="param-item">
-                                <label className="param-label">④ 이자율 <div className="param-korean">Interest Rate %</div></label>
-                                <input type="number" step="0.01" min="2" max="12" value={interestRate} onChange={(e) => setInterestRate(parseFloat(e.target.value) || 0)} className="param-input" />
-                            </div>
-                        </div>
-
-                        <div className="param-row" style={{ gridTemplateColumns: '1fr' }}>
-                            <div className="param-item">
-                                <label className="param-label">⑤ 상환 방식 <div className="param-korean">Repayment Type</div></label>
-                                <div className="toggle-group">
-                                    <button className={`toggle-btn ${repaymentType === 'IO' ? 'active' : ''}`} onClick={() => setRepaymentType('IO')}>Interest Only (IO)</button>
-                                    <button className={`toggle-btn ${repaymentType === 'P&I' ? 'active' : ''}`} onClick={() => setRepaymentType('P&I')}>Principal & Interest (P&I)</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Data Management */}
-                    <div className="data-management">
-                        <div className="card-title" style={{ marginBottom: '12px', fontSize: '14px' }}>📁 Data Management</div>
-                        <div className="data-buttons">
-                            <button className="data-btn" onClick={downloadCSV}>📥 Download Template</button>
-                            <button className="data-btn" onClick={exportCurrent}>📤 Export Current</button>
-                        </div>
-                    </div>
-
-                    {/* Scenarios */}
-                    <div className="card">
-                        <div className="card-title">📈 6 Scenario Comparison</div>
-                        <table className="scenario-table">
-                            <thead>
-                                <tr>
-                                    <th>Scenario</th>
-                                    <th>Rate</th>
-                                    <th>LVR</th>
-                                    <th>Type</th>
-                                    <th>Monthly</th>
-                                    <th>Annual</th>
-                                    <th>Yield</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {scenarios.map((s, i) => (
-                                    <tr key={i}>
-                                        <td><strong>{s.name}</strong></td>
-                                        <td>{s.rate.toFixed(2)}%</td>
-                                        <td>{s.lvr}%</td>
-                                        <td>{s.type}</td>
-                                        <td style={{ color: s.monthlyNet >= 0 ? '#22c55e' : '#ef4444' }}>{formatCurrency(s.monthlyNet)}</td>
-                                        <td style={{ color: s.annualNet >= 0 ? '#22c55e' : '#ef4444' }}>{formatCurrency(s.annualNet)}</td>
-                                        <td>{s.yield.toFixed(2)}%</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* TOD & LMR Analysis */}
-                    {(todEligible || lmrEligible) && (
-                        <div className="card">
-                            <div className="card-title">🚄 Transit-Oriented Development & LMR</div>
-                            <div style={{ display: 'flex', gap: '12px' }}>
-                                {todEligible && <span className="badge badge-green">✓ TOD Eligible</span>}
-                                {lmrEligible && <span className="badge badge-blue">✓ LMR Eligible</span>}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Investment Scorecard */}
-                    <div className="card">
-                        <div className="card-title">🎯 Investment Scorecard</div>
-                        <div className="scorecard-grid">
-                            <div className="score-item">
-                                <div className="score-label">Demand</div>
-                                <div className="score-value">{scores.demand}/10</div>
-                            </div>
-                            <div className="score-item">
-                                <div className="score-label">Supply</div>
-                                <div className="score-value">{scores.supply}/10</div>
-                            </div>
-                            <div className="score-item">
-                                <div className="score-label">Location</div>
-                                <div className="score-value">{scores.location}/10</div>
-                            </div>
-                            <div className="score-item">
-                                <div className="score-label">Growth</div>
-                                <div className="score-value">{scores.growth}/10</div>
-                            </div>
-                            <div className="score-item">
-                                <div className="score-label">Cashflow</div>
-                                <div className="score-value">{scores.cashflow}/10</div>
-                            </div>
-                            <div className="score-item">
-                                <div className="score-label">Development</div>
-                                <div className="score-value">{scores.development}/10</div>
-                            </div>
-                            <div className="score-item">
-                                <div className="score-label">TOD</div>
-                                <div className="score-value">{scores.tod}/10</div>
-                            </div>
-                            <div className="score-item">
-                                <div className="score-label">Risk</div>
-                                <div className="score-value">{scores.risk}/10</div>
-                            </div>
-                        </div>
-                        <div className="score-item" style={{ background: '#2E75B6', color: 'white', padding: '16px', textAlign: 'center', borderRadius: '8px', marginTop: '12px' }}>
-                            <div className="score-label" style={{ color: 'rgba(255,255,255,0.9)' }}>Overall Score</div>
-                            <div style={{ fontSize: '32px', fontWeight: '700' }}>{scores.overall}/10</div>
-                        </div>
-                    </div>
-
-                    {/* Full Report */}
-                    <div className="card">
-                        <button style={{ padding: '12px 20px', width: '100%', background: '#2E75B6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', marginBottom: '16px' }} onClick={() => setShowReport(!showReport)}>
-                            {showReport ? '📄 Hide Full Report' : '📄 Show Full Report'}
-                        </button>
-
-                        {showReport && (
-                            <div className="report-section">
-                                <div className="report-section-title">Investment Analysis Report</div>
-
-                                <div className="report-section-title" style={{ fontSize: '14px', marginTop: '20px' }}>Financial Summary</div>
-                                <div className="report-grid">
-                                    <div className="report-item">
-                                        <div className="report-item-label">Purchase Price</div>
-                                        <div className="report-item-value">{formatCurrency(purchasePrice)}</div>
-                                    </div>
-                                    <div className="report-item">
-                                        <div className="report-item-label">Stamp Duty</div>
-                                        <div className="report-item-value">{formatCurrency(stampDuty)}</div>
-                                    </div>
-                                    <div className="report-item">
-                                        <div className="report-item-label">Total Investment</div>
-                                        <div className="report-item-value">{formatCurrency(totalInvestment)}</div>
-                                    </div>
-                                    <div className="report-item">
-                                        <div className="report-item-label">Loan Amount</div>
-                                        <div className="report-item-value">{formatCurrency(loanAmount)}</div>
-                                    </div>
-                                    <div className="report-item">
-                                        <div className="report-item-label">Equity Required</div>
-                                        <div className="report-item-value">{formatCurrency(equity)}</div>
-                                    </div>
-                                    <div className="report-item">
-                                        <div className="report-item-label">Annual Rent</div>
-                                        <div className="report-item-value">{formatCurrency(annualRent)}</div>
-                                    </div>
-                                    <div className="report-item">
-                                        <div className="report-item-label">Gross Yield</div>
-                                        <div className="report-item-value">{grossYield.toFixed(2)}%</div>
-                                    </div>
-                                    <div className="report-item">
-                                        <div className="report-item-label">Net Yield</div>
-                                        <div className="report-item-value" style={{ color: netYield >= 0 ? '#22c55e' : '#ef4444' }}>{netYield.toFixed(2)}%</div>
-                                    </div>
-                                </div>
-
-                                <div className="report-section-title" style={{ fontSize: '14px', marginTop: '20px' }}>Monthly Cashflow</div>
-                                <div className="report-grid">
-                                    <div className="report-item">
-                                        <div className="report-item-label">Monthly Rent</div>
-                                        <div className="report-item-value">{formatCurrency(monthlyRent)}</div>
-                                    </div>
-                                    <div className="report-item">
-                                        <div className="report-item-label">Mortgage Payment</div>
-                                        <div className="report-item-value">{formatCurrency(monthlyRepayment)}</div>
-                                    </div>
-                                    <div className="report-item">
-                                        <div className="report-item-label">Council Rates</div>
-                                        <div className="report-item-value">{formatCurrency(councilRates)}</div>
-                                    </div>
-                                    <div className="report-item">
-                                        <div className="report-item-label">Insurance</div>
-                                        <div className="report-item-value">{formatCurrency(insurance)}</div>
-                                    </div>
-                                    <div className="report-item">
-                                        <div className="report-item-label">Maintenance</div>
-                                        <div className="report-item-value">{formatCurrency(maintenanceFund)}</div>
-                                    </div>
-                                    <div className="report-item">
-                                        <div className="report-item-label">Vacancy Loss (8%)</div>
-                                        <div className="report-item-value">{formatCurrency(vacancyLoss)}</div>
-                                    </div>
-                                    <div className="report-item">
-                                        <div className="report-item-label">Total Expenses</div>
-                                        <div className="report-item-value">{formatCurrency(totalMonthlyExpenses)}</div>
-                                    </div>
-                                    <div className="report-item" style={{ background: '#2E75B6', borderLeftColor: '#2E75B6', color: 'white' }}>
-                                        <div className="report-item-label" style={{ color: 'rgba(255,255,255,0.9)' }}>Net Cashflow</div>
-                                        <div className="report-item-value" style={{ color: 'white' }}>{formatCurrency(monthlyNetCashflow)}</div>
-                                    </div>
-                                </div>
-
-                                <div className="report-section-title" style={{ fontSize: '14px', marginTop: '20px' }}>Risk Factors</div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    <div className="risk-item">
-                                        <span className="risk-indicator">{floodZone ? '⚠️' : '✅'}</span>
-                                        <span>Flood Zone: {floodZone ? 'YES - Risk present' : 'No risk'}</span>
-                                    </div>
-                                    <div className="risk-item">
-                                        <span className="risk-indicator">{bushfireZone !== 'No' ? '⚠️' : '✅'}</span>
-                                        <span>Bushfire Zone: {bushfireZone !== 'No' ? `${bushfireZone} - Risk present` : 'No risk'}</span>
-                                    </div>
-                                    <div className="risk-item">
-                                        <span className="risk-indicator">{heritage ? '⚠️' : '✅'}</span>
-                                        <span>Heritage Listed: {heritage ? 'YES - Restrictions apply' : 'No restrictions'}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Sticky Cashflow Panel */}
-                <div className="cashflow-panel">
-                    <div style={{ textAlign: 'center', marginBottom: '16px', paddingBottom: '16px', borderBottom: '2px solid #2E75B6' }}>
-                        <div style={{ fontSize: '12px', color: '#666' }}>Quick Overview</div>
-                    </div>
-
-                    <div className="metric">
-                        <div className="metric-label">Weekly Rent</div>
-                        <div className="metric-value">{formatCurrency(weeklyRent)}</div>
-                        <div className="metric-secondary">Annual: {formatCurrency(annualRent)}</div>
-                    </div>
-
-                    <div className="metric">
-                        <div className="metric-label">Gross Yield</div>
-                        <div className="metric-value">{grossYield.toFixed(2)}%</div>
-                        <div className="metric-secondary">Income only</div>
-                    </div>
-
-                    <div className="metric">
-                        <div className="metric-label">Monthly Mortgage</div>
-                        <div className="metric-value">{formatCurrency(monthlyRepayment)}</div>
-                        <div className="metric-secondary">{repaymentType} @ {interestRate}%</div>
-                    </div>
-
-                    <div className="metric">
-                        <div className="metric-label">Monthly Expenses</div>
-                        <div className="metric-value">{formatCurrency(totalMonthlyExpenses)}</div>
-                        <div className="metric-secondary">All costs</div>
-                    </div>
-
-                    <div className="metric">
-                        <div className="metric-label">Monthly Cashflow</div>
-                        <div className={`metric-value ${monthlyNetCashflow >= 0 ? 'positive' : 'negative'}`}>{formatCurrency(monthlyNetCashflow)}</div>
-                        <div className="metric-secondary">Net after expenses</div>
-                    </div>
-
-                    <div className="metric">
-                        <div className="metric-label">Net Yield</div>
-                        <div className={`metric-value ${netYield >= 0 ? 'positive' : 'negative'}`}>{netYield.toFixed(2)}%</div>
-                        <div className="metric-secondary">After all costs</div>
-                    </div>
-
-                    <div className="metric">
-                        <div className="metric-label">LVR</div>
-                        <div className="metric-value">{lvr}%</div>
-                        <div className="metric-secondary">Equity: {(100-lvr)}%</div>
-                    </div>
-
-                    <div className="metric">
-                        <div className="metric-label">Overall Score</div>
-                        <div className="metric-value">{scores.overall}/10</div>
-                        <div className="metric-secondary">Investment quality</div>
-                    </div>
-                </div>
-            </div>
+        {/* Cash Flow Table */}
+        <h3>6.1 연간 예상 현금흐름 (매입가 {fmtK(f.price)}, 렌트 ${f.rent}/주 기준)</h3>
+        <table>
+          <thead><tr><th>항목</th><th>연간 금액</th><th>비고</th></tr></thead>
+          <tbody>
+            <tr><td>총 렌탈 수입</td><td style={{ color: '#2e7d32', fontWeight: 700 }}>+{fmt(f.grossRental)}</td><td>${f.rent} x 52주</td></tr>
+            <tr><td>공실 손실 (2주)</td><td style={{ color: '#c62828' }}>-{fmt(f.vacancyLoss)}</td><td>공실률 반영</td></tr>
+            <tr><td>관리비 (7%)</td><td style={{ color: '#c62828' }}>-{fmt(f.mgmtFee)}</td><td>프로퍼티 매니저</td></tr>
+            <tr><td>Council Rates</td><td style={{ color: '#c62828' }}>-{fmt(f.councilRates)}</td><td>추정</td></tr>
+            <tr><td>Water Rates</td><td style={{ color: '#c62828' }}>-{fmt(f.waterRates)}</td><td>추정</td></tr>
+            <tr><td>보험료</td><td style={{ color: '#c62828' }}>-{fmt(f.insurance)}</td><td>추정</td></tr>
+            <tr><td>유지보수</td><td style={{ color: '#c62828' }}>-{fmt(f.maintenance)}</td><td>추정</td></tr>
+            <tr style={{ background: '#e3f2fd', fontWeight: 700 }}>
+              <td>순 렌탈 수입</td>
+              <td style={{ color: '#2e7d32' }}>{fmt(f.netRental)}</td>
+              <td>Net Yield ~{pct(f.netYield, 2)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        {/* Mortgage Table */}
+        <h3>6.2 모기지 시나리오 ({lvr}% LVR, {isIO ? 'Interest Only' : 'P&I'})</h3>
+        <table>
+          <tbody>
+            <tr><td>매입 가격</td><td><strong>{fmt(f.price)}</strong></td></tr>
+            <tr><td>예치금 ({100 - lvr}%)</td><td>{fmt(f.deposit)}</td></tr>
+            <tr><td>대출 금액</td><td>{fmt(f.loanAmount)}</td></tr>
+            <tr><td>인지세 (Stamp Duty)</td><td>~{fmt(f.stampDuty)}</td></tr>
+            <tr style={{ background: '#e3f2fd' }}><td><strong>총 초기 투자금</strong></td><td><strong>~{fmt(f.totalInitial)}</strong></td></tr>
+            <tr><td>연간 상환액 ({pct(interestRate)}, {isIO ? 'IO' : 'P&I'})</td><td style={{ color: '#c62828' }}>{fmt(Math.round(f.annualMortgage))}</td></tr>
+            <tr style={{ background: f.annualCashflow >= 0 ? '#e8f5e9' : '#fce4ec' }}>
+              <td><strong>연간 현금흐름</strong></td>
+              <td style={{ color: f.annualCashflow >= 0 ? '#2e7d32' : '#c62828', fontWeight: 700 }}>
+                {fmt(Math.round(f.annualCashflow))} {f.annualCashflow < 0 ? '(네거티브 기어링)' : '(포지티브 기어링)'}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        {/* Scenario Comparison */}
+        <h3>6.3 시나리오 비교</h3>
+        <table>
+          <thead><tr><th>시나리오</th><th>이자율</th><th>방식</th><th>연간 상환</th><th>현금흐름</th></tr></thead>
+          <tbody>
+            {[
+              { label: '현재 설정', rate: interestRate, io: isIO },
+              { label: '금리 -1%', rate: Math.max(0, interestRate - 1), io: isIO },
+              { label: '금리 +1%', rate: interestRate + 1, io: isIO },
+              { label: isIO ? 'P&I 전환' : 'IO 전환', rate: interestRate, io: !isIO },
+              { label: '금리 -1% + ' + (isIO ? 'P&I' : 'IO'), rate: Math.max(0, interestRate - 1), io: !isIO },
+              { label: '금리 +1% + ' + (isIO ? 'P&I' : 'IO'), rate: interestRate + 1, io: !isIO },
+            ].map((sc, i) => {
+              const mp = calcMortgage(f.loanAmount, sc.rate, 30, sc.io);
+              const am = mp * 12;
+              const cf = f.netRental - am;
+              return (
+                <tr key={i} style={i === 0 ? { background: '#e3f2fd', fontWeight: 600 } : {}}>
+                  <td>{sc.label}</td>
+                  <td>{pct(sc.rate)}</td>
+                  <td>{sc.io ? 'IO' : 'P&I'}</td>
+                  <td>{fmt(Math.round(am))}</td>
+                  <td style={{ color: cf >= 0 ? '#2e7d32' : '#c62828', fontWeight: 600 }}>{fmt(Math.round(cf))}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        <div className="highlight">
+          <strong>참고:</strong> 네거티브 기어링이라도, 호주 세법상 이자/감가상각 등 과세소득 공제 가능. 자본 성장률 {pct(d.annualGrowth)} 적용 시 연간 약 {fmtK(Math.round(f.price * d.annualGrowth / 100))} 자산가치 상승 기대 → 총수익 관점에서 {f.annualCashflow + f.price * d.annualGrowth / 100 > 0 ? '긍정적' : '보수적 접근 필요'}.
         </div>
-    );
-}
+      </div>
 
+      {/* ── 7. Risk Assessment ── */}
+      <div className="section">
+        <h2>7. 리스크 분석 (Risk Assessment)</h2>
+        <table>
+          <thead><tr><th>리스크</th><th>수준</th><th>상세 내용</th><th>대응 방안</th></tr></thead>
+          <tbody>
+            <tr><td><strong>금리 리스크</strong></td><td><Badge text="중간" /></td><td>{f.annualCashflow < 0 ? '현 금리에서 네거티브 기어링 발생' : '현 금리에서 포지티브 기어링'}</td><td>고정금리 검토</td></tr>
+            <tr><td><strong>시장 조정</strong></td><td><Badge text={d.annualGrowth > 5 ? '낮음' : '중간'} /></td><td>{region} 시장 동향 모니터링</td><td>장기 보유 전략</td></tr>
+            <tr><td><strong>유동성</strong></td><td><Badge text={d.daysOnMarket < 30 ? '낮음' : '중간'} /></td><td>평균 {d.daysOnMarket}일 거래, 연 {d.annualSales}건</td><td>{d.daysOnMarket < 30 ? '활발한 시장' : '적정 시장'}</td></tr>
+            <tr><td><strong>공실 리스크</strong></td><td><Badge text={d.vacancyRate < 1.5 ? '낮음' : '중간'} /></td><td>공실률 {d.vacancyRate < 1 ? '< 1%' : pct(d.vacancyRate)}</td><td>프로퍼티 매니저 활용</td></tr>
+            <tr><td><strong>홍수/부시파이어</strong></td><td><Badge text="확인 필요" /></td><td>NSW Flood Data Portal 및 RFS Map 확인 필수</td><td>보험 가입 및 정밀 조사</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── 8. Market Outlook ── */}
+      <div className="section">
+        <h2>8. 시장 전망 (Market Outlook 2026)</h2>
+        <table>
+          <thead><tr><th>항목</th><th>전망</th><th>영향</th></tr></thead>
+          <tbody>
+            <tr><td>{region} 가격 성장</td><td>+{pct(d.annualGrowth)} 연간</td><td><Badge text="긍정" /></td></tr>
+            <tr><td>렌탈 시장</td><td>공실률 {d.vacancyRate < 1 ? '1% 미만' : pct(d.vacancyRate)} 지속</td><td><Badge text={d.vacancyRate < 1.5 ? '렌트 상승 압력' : '안정'} /></td></tr>
+            <tr><td>수요 동인</td><td>시드니 대비 저평가 + 원격근무 확산</td><td><Badge text="유입 수요 지속" /></td></tr>
+            <tr><td>규제 변화</td><td>NSW Low-Mid Rise Housing Policy</td><td><Badge text="개발 기회 확대" /></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── 9. Overall Assessment ── */}
+      <div className="section">
+        <h2>9. 종합 투자 평가 (Overall Assessment)</h2>
+        <table>
+          <thead><tr><th>평가 항목</th><th>점수</th><th>근거</th></tr></thead>
+          <tbody>
+            {sc.items.map((item, i) => (
+              <tr key={i}>
+                <td>{item.label}</td>
+                <td><Badge text={`${item.score}/10`} type={item.score >= 7 ? 'badge-green' : item.score >= 5 ? 'badge-orange' : 'badge-red'} /></td>
+                <td>{
+                  item.label === '수요 강도' ? `인구 +${pct(d.popGrowth)}, 소득 +${pct(d.incomeGrowth)}, 공실률 ${d.vacancyRate < 1 ? '<1%' : pct(d.vacancyRate)}` :
+                  item.label === '공급 환경' ? `BoomScore ${d.boomScore}/100, ${d.daysOnMarket}일 거래` :
+                  item.label === '입지 / 인프라' ? `최근접역 ${d.nearestStationKm}km, ${d.zoning}` :
+                  item.label === '자본 성장 잠재력' ? `연 ${pct(d.annualGrowth)} 성장` :
+                  item.label === '현금흐름' ? `Gross Yield ${pct(f.grossYield, 2)}, ${f.annualCashflow < 0 ? '네거티브' : '포지티브'} 기어링` :
+                  item.label === '개발 잠재력' ? `${d.zoning} → ${d.zoning?.includes('R2') ? 'Dual Occ 가능' : '개발 가능'}` :
+                  item.label === 'TOD/LMR 수혜' ? `최근접역 ${d.nearestStationKm}km, ${todApplicable ? 'TOD 해당' : 'TOD 미해당'} / ${lmrApplicable ? 'LMR 해당' : 'LMR 미해당'}` :
+                  `${d.daysOnMarket}일 거래, 공실률 ${d.vacancyRate < 1 ? '<1%' : pct(d.vacancyRate)}`
+                }</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="verdict">
+          <div className="label">종합 투자 점수</div>
+          <div className="score">{sc.avg.toFixed(1)} / 10</div>
+          <div className="text">{verdictText}</div>
+        </div>
+
+        <div className="pro-con">
+          <div className="pros">
+            <h4 style={{ color: '#2e7d32' }}>긍정적 요소</h4>
+            <ul>
+              {d.popGrowth > 5 && <li>인구 +{pct(d.popGrowth)} 성장</li>}
+              {d.incomeGrowth > 20 && <li>소득 +{pct(d.incomeGrowth)} 증가</li>}
+              {d.vacancyRate < 1.5 && <li>공실률 {d.vacancyRate < 1 ? '<1%' : pct(d.vacancyRate)} → 강한 렌탈 수요</li>}
+              {d.annualGrowth > 5 && <li>연 {pct(d.annualGrowth)} 자본 성장</li>}
+              {d.daysOnMarket < 30 && <li>{d.daysOnMarket}일 평균 거래 → 높은 유동성</li>}
+              {d.zoning?.includes('R2') && <li>R2 + NSW Stage 1 → 개발 유연성</li>}
+              {(todApplicable || lmrApplicable) && <li>TOD/LMR 수혜 지역</li>}
+            </ul>
+          </div>
+          <div className="cons">
+            <h4 style={{ color: '#c62828' }}>주의 사항</h4>
+            <ul>
+              {f.annualCashflow < 0 && <li>네거티브 기어링 → 현금흐름 여력 필요</li>}
+              {!todApplicable && !lmrApplicable && <li>TOD/LMR 미해당 → 밀도 상향 프리미엄 없음</li>}
+              {f.grossYield < 4 && <li>Gross Yield {pct(f.grossYield, 2)} → 현금흐름 투자자에겐 부적합</li>}
+              <li>홍수/부시파이어 등급 확인 필요</li>
+              <li>Building & Pest Inspection 필수</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 10. Due Diligence Checklist ── */}
+      <div className="section">
+        <h2>10. 매입 전 체크리스트 (Due Diligence)</h2>
+        <ul className="checklist">
+          <li><strong>NSW Flood Data Portal</strong> — 홍수 구역 정밀 확인 (flooddata.ses.nsw.gov.au)</li>
+          <li><strong>NSW RFS BFPL Map</strong> — 부시파이어 위험 등급 확인 (rfs.nsw.gov.au)</li>
+          <li><strong>Building & Pest Inspection</strong> — 건물 상태 점검</li>
+          <li><strong>{region === 'Central Coast' ? 'Central Coast' : 'Local'} Council</strong> — 조닝 확인, 개발 가능 범위 문의</li>
+          <li><strong>NSW Planning Portal</strong> — Spatial Viewer에서 DA/CDC 이력 확인</li>
+          <li><strong>Before You Dig (BYDA)</strong> — 지하 인프라 확인 (byda.com.au)</li>
+          <li><strong>SuburbsFinder Calculator</strong> — 정밀 현금흐름 시뮬레이션</li>
+          <li><strong>SQM Research</strong> — 실시간 렌트 동향 조회 (postcode {d.postcode})</li>
+          <li><strong>RateMyAgent</strong> — 지역 최우수 에이전트 검색</li>
+          <li><strong>Strata/Title 확인</strong> — Torrens Title 여부, 이지먼트 확인</li>
+          <li><strong>Comparable Sales</strong> — 인근 최근 매매 가격 비교</li>
+        </ul>
+
+        <div className="source">
+          <strong>데이터 출처:</strong> ABS Census 2021, BoomScore, SQM Research, PropertyValue, Domain{d.sources?.length > 0 ? `, ${d.sources.join(', ')}` : ''}<br/>
+          <strong>면책:</strong> 본 분석은 공개 데이터 기반이며, 전문적 재정/법률 자문을 대체하지 않습니다. 투자 결정 전 전문가 상담을 권장합니다.
+        </div>
+      </div>
+
+    </div>
+  );
+}
