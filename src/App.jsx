@@ -143,12 +143,16 @@ export default function App() {
   const [parsed, setParsed] = useState(null);
   const [error, setError] = useState('');
 
-  // Adjustable financial parameters
-  const [purchasePrice, setPurchasePrice] = useState(0);
-  const [weeklyRent, setWeeklyRent] = useState(0);
+  // Adjustable financial parameters (string state to allow empty input)
+  const [priceStr, setPriceStr] = useState('');
+  const [rentStr, setRentStr] = useState('');
   const [lvr, setLvr] = useState(80);
-  const [interestRate, setInterestRate] = useState(6.0);
+  const [rateStr, setRateStr] = useState('6.0');
   const [isIO, setIsIO] = useState(true);
+
+  const purchasePrice = parseFloat(priceStr) || 0;
+  const weeklyRent = parseFloat(rentStr) || 0;
+  const interestRate = parseFloat(rateStr) || 0;
 
   const handleAnalyze = useCallback(async () => {
     if (!address.trim()) return;
@@ -206,10 +210,10 @@ export default function App() {
     };
 
     setData(finalData);
-    setPurchasePrice(finalData.medianPrice);
-    setWeeklyRent(finalData.weeklyRent);
+    setPriceStr(String(finalData.medianPrice));
+    setRentStr(String(finalData.weeklyRent));
     setLvr(80);
-    setInterestRate(6.0);
+    setRateStr('6.0');
     setIsIO(true);
     setLoading(false);
   }, [address]);
@@ -336,7 +340,33 @@ export default function App() {
     <div className="container">
 
       {/* ── HEADER ── */}
-      <div className="header">
+      <div className="header" style={{ position: 'relative' }}>
+        {/* Share / PDF buttons — top right */}
+        <div style={{ position: 'absolute', top: 16, right: 16, display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => {
+              const url = window.location.href;
+              if (navigator.share) {
+                navigator.share({ title: `Investment Analysis: ${address}`, url });
+              } else {
+                navigator.clipboard.writeText(url);
+                alert('Link copied!');
+              }
+            }}
+            style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 8, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+            Share
+          </button>
+          <button
+            onClick={() => { window.print(); }}
+            style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.25)', color: 'white', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 8, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            PDF
+          </button>
+        </div>
+
         <h1>Property Investment Analysis</h1>
         <div className="address">{address}</div>
         <div className="meta">{region}, {d.state} | Analysis Date: {new Date().toLocaleDateString('en-AU', {month:'long', year:'numeric'})}</div>
@@ -514,13 +544,13 @@ export default function App() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#1B3A5C' }}>매입가격</label>
-              <input type="number" value={purchasePrice} onChange={e => setPurchasePrice(Number(e.target.value))}
-                style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 14 }} step={10000} />
+              <input type="text" inputMode="numeric" value={priceStr} onChange={e => setPriceStr(e.target.value.replace(/[^0-9]/g, ''))}
+                style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 14 }} placeholder="935000" />
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#1B3A5C' }}>주간 렌트 ($)</label>
-              <input type="number" value={weeklyRent} onChange={e => setWeeklyRent(Number(e.target.value))}
-                style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 14 }} step={10} />
+              <input type="text" inputMode="numeric" value={rentStr} onChange={e => setRentStr(e.target.value.replace(/[^0-9]/g, ''))}
+                style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 14 }} placeholder="680" />
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#1B3A5C' }}>LVR (%)</label>
@@ -530,8 +560,8 @@ export default function App() {
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#1B3A5C' }}>이자율 (%)</label>
-              <input type="number" value={interestRate} onChange={e => setInterestRate(Number(e.target.value))}
-                style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 14 }} step={0.1} min={0} max={15} />
+              <input type="text" inputMode="decimal" value={rateStr} onChange={e => setRateStr(e.target.value.replace(/[^0-9.]/g, ''))}
+                style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 14 }} placeholder="6.0" />
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#1B3A5C' }}>상환 방식</label>
