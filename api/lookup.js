@@ -401,6 +401,33 @@ export default async function handler(req, res) {
     Object.assign(liveFields, src.fields);
   }
 
+  // ── Sanity validation: discard obviously wrong scraped values ──
+  const VALID_RANGES = {
+    medianPrice:      [100000, 20000000],  // $100K ~ $20M
+    weeklyRent:       [100, 5000],         // $100 ~ $5000/week
+    population:       [100, 5000000],      // 100 ~ 5M
+    popGrowth:        [-10, 50],           // -10% ~ 50%
+    medianIncomeWeekly: [300, 10000],      // $300 ~ $10000/week
+    incomeGrowth:     [-10, 100],
+    vacancyRate:      [0, 30],             // 0% ~ 30%
+    ownerOccRate:     [10, 100],
+    annualGrowth:     [-20, 50],           // -20% ~ 50%
+    daysOnMarket:     [1, 365],
+    annualSales:      [1, 10000],
+    boomScore:        [0, 100],
+    grossYield:       [0.5, 20],           // 0.5% ~ 20%
+    affluenceScore:   [0, 100],
+    crimeRate:        [0, 50000],
+    seifaIndex:       [500, 1200],
+  };
+  for (const [key, [min, max]] of Object.entries(VALID_RANGES)) {
+    if (liveFields[key] !== undefined && liveFields[key] !== null) {
+      if (typeof liveFields[key] === 'number' && (liveFields[key] < min || liveFields[key] > max)) {
+        delete liveFields[key]; // Discard out-of-range value
+      }
+    }
+  }
+
   // ── Phase 2: If no web data AND no fallback DB → use Claude API ──
   const hasUsefulData = Object.keys(liveFields).length >= 3 || hasFallback;
   let claudeResult = null;
