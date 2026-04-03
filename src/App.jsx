@@ -195,6 +195,14 @@ export default function App() {
       street: p.street,
       dataSource: fetchedData?.dataSource || (localData ? 'database' : 'defaults'),
       sources: fetchedData?.sources || [],
+      usedClaude: fetchedData?.usedClaude || false,
+      // Extra fields from specialized sources
+      affluenceScore: fetchedData?.suburbStats?.affluenceScore || null,
+      crimeRate: fetchedData?.suburbStats?.crimeRate || null,
+      crimeScore: fetchedData?.suburbStats?.crimeScore || null,
+      seifaIndex: fetchedData?.suburbStats?.seifaIndex || null,
+      floodZone: fetchedData?.suburbStats?.floodZone || null,
+      bushfireRisk: fetchedData?.suburbStats?.bushfireRisk || null,
     };
 
     setData(finalData);
@@ -309,7 +317,11 @@ export default function App() {
       <div className="header">
         <h1>Property Investment Analysis</h1>
         <div className="address">{address}</div>
-        <div className="meta">{region}, {d.state} | Analysis Date: {new Date().toLocaleDateString('en-AU', {month:'long', year:'numeric'})} | Data: {d.dataSource}</div>
+        <div className="meta">{region}, {d.state} | Analysis Date: {new Date().toLocaleDateString('en-AU', {month:'long', year:'numeric'})}</div>
+        <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
+          Data: {d.dataSource} | Sources: {d.sources?.length > 0 ? d.sources.join(', ') : 'Embedded DB'}
+          {d.usedClaude && ' | Claude AI assisted'}
+        </div>
         <button
           onClick={() => { setData(null); setAddress(''); }}
           style={{ marginTop: 12, padding: '6px 20px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}
@@ -598,9 +610,28 @@ export default function App() {
             <tr><td><strong>시장 조정</strong></td><td><Badge text={d.annualGrowth > 5 ? '낮음' : '중간'} /></td><td>{region} 시장 동향 모니터링</td><td>장기 보유 전략</td></tr>
             <tr><td><strong>유동성</strong></td><td><Badge text={d.daysOnMarket < 30 ? '낮음' : '중간'} /></td><td>평균 {d.daysOnMarket}일 거래, 연 {d.annualSales}건</td><td>{d.daysOnMarket < 30 ? '활발한 시장' : '적정 시장'}</td></tr>
             <tr><td><strong>공실 리스크</strong></td><td><Badge text={d.vacancyRate < 1.5 ? '낮음' : '중간'} /></td><td>공실률 {d.vacancyRate < 1 ? '< 1%' : pct(d.vacancyRate)}</td><td>프로퍼티 매니저 활용</td></tr>
-            <tr><td><strong>홍수/부시파이어</strong></td><td><Badge text="확인 필요" /></td><td>NSW Flood Data Portal 및 RFS Map 확인 필수</td><td>보험 가입 및 정밀 조사</td></tr>
+            <tr><td><strong>홍수/부시파이어</strong></td>
+              <td><Badge text={d.floodZone ? '확인됨' : d.bushfireRisk ? '확인됨' : '확인 필요'} /></td>
+              <td>{d.floodZone || d.bushfireRisk || 'NSW Flood Data Portal 및 RFS Map 확인 필수'}</td>
+              <td>보험 가입 및 정밀 조사</td></tr>
           </tbody>
         </table>
+
+        {/* Extra data from Microburbs / OpenStats */}
+        {(d.affluenceScore || d.crimeRate || d.seifaIndex) && (
+          <>
+            <h3 style={{ marginTop: 16 }}>7.1 사회경제적 지표 (Socio-Economic)</h3>
+            <table>
+              <thead><tr><th>지표</th><th>수치</th><th>출처</th></tr></thead>
+              <tbody>
+                {d.affluenceScore && <tr><td>Affluence Score</td><td>{d.affluenceScore}</td><td>Microburbs</td></tr>}
+                {d.crimeRate && <tr><td>범죄율 (per 100K)</td><td>{d.crimeRate}</td><td>OpenStats</td></tr>}
+                {d.crimeScore && <tr><td>Crime Score</td><td>{d.crimeScore}</td><td>Microburbs</td></tr>}
+                {d.seifaIndex && <tr><td>SEIFA Index</td><td>{d.seifaIndex}</td><td>OpenStats/ABS</td></tr>}
+              </tbody>
+            </table>
+          </>
+        )}
       </div>
 
       {/* ── 8. Market Outlook ── */}
