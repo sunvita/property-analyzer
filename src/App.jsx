@@ -255,13 +255,21 @@ export default function App() {
   if (!data) {
     return (
       <div className="container">
-        <div className="header" style={{ textAlign: 'center' }}>
-          <h1>Property Investment Analyzer</h1>
-          <p style={{ opacity: 0.9, fontSize: '15px' }}>NSW 부동산 투자 분석 리포트 자동 생성기</p>
+        <div className="header" style={{ textAlign: 'center', padding: '40px 32px' }}>
+          <h1 style={{ fontSize: '28px', marginBottom: '8px' }}>Australian Property Investment Analyzer</h1>
+          <p style={{ opacity: 0.95, fontSize: '17px', fontWeight: 500, marginBottom: '6px' }}>
+            주소 하나로 끝내는 투자 분석 리포트
+          </p>
+          <p style={{ opacity: 0.7, fontSize: '13px', lineHeight: 1.6 }}>
+            15,000+ suburbs | 9개 데이터 소스 자동 수집 | 실시간 현금흐름 시뮬레이션
+          </p>
         </div>
 
-        <div className="section" style={{ maxWidth: 600, margin: '40px auto', textAlign: 'center' }}>
-          <h2 style={{ borderBottom: 'none', marginBottom: 24 }}>주소를 입력하세요</h2>
+        <div className="section" style={{ maxWidth: 600, margin: '30px auto', textAlign: 'center' }}>
+          <h2 style={{ borderBottom: 'none', marginBottom: 8, fontSize: '20px' }}>Analyze Any Address in Australia</h2>
+          <p style={{ fontSize: 14, color: '#666', marginBottom: 20 }}>
+            주소만 입력하면 수요/공급, 현금흐름, TOD/LMR, 리스크까지 한번에
+          </p>
           <input
             type="text"
             value={address}
@@ -281,18 +289,32 @@ export default function App() {
               width: '100%', padding: '14px', fontSize: '18px', fontWeight: 700,
               background: loading ? '#999' : 'linear-gradient(135deg, #1B3A5C, #2E75B6)',
               color: 'white', border: 'none', borderRadius: '10px', cursor: loading ? 'wait' : 'pointer',
+              transition: 'transform 0.1s',
             }}
           >
-            {loading ? 'Analyzing...' : 'Analyze!'}
+            {loading ? 'Analyzing... (9개 소스 수집 중)' : 'Analyze!'}
           </button>
           {error && <p style={{ color: '#c62828', marginTop: 12, fontSize: 14 }}>{error}</p>}
 
-          <div style={{ marginTop: 32, fontSize: 13, color: '#999', textAlign: 'left' }}>
-            <strong>내장 서브업 ({Object.keys(SUBURB_DATA).length}개):</strong><br/>
-            {Object.keys(SUBURB_DATA).map(s => s.charAt(0) + s.slice(1).toLowerCase()).join(', ')}
-            <br/><br/>
-            <em>위 목록에 없는 서브업도 입력 가능합니다 (API 자동 조회).</em>
+          {/* Feature highlights */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '28px', textAlign: 'left' }}>
+            {[
+              { icon: '📊', title: '10-Section Report', desc: '수요, 공급, 입지, TOD/LMR, 현금흐름, 리스크, 종합평가' },
+              { icon: '🔄', title: 'Real-time Cashflow', desc: '매입가, 렌트, LVR, 이자율, IO/P&I 즉시 재계산' },
+              { icon: '🌐', title: '9 Data Sources', desc: 'BoomScore, Domain, OpenStats, ABS Census 등 자동 수집' },
+              { icon: '🏗️', title: 'TOD/LMR Analysis', desc: 'NSW Planning Reform 2025 자동 분석' },
+            ].map((f, i) => (
+              <div key={i} style={{ padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e8e8e8' }}>
+                <div style={{ fontSize: '20px', marginBottom: '4px' }}>{f.icon}</div>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#1B3A5C' }}>{f.title}</div>
+                <div style={{ fontSize: '11px', color: '#666', lineHeight: 1.4 }}>{f.desc}</div>
+              </div>
+            ))}
           </div>
+
+          <p style={{ marginTop: 20, fontSize: 11, color: '#aaa' }}>
+            NSW, VIC, QLD, WA, SA, TAS, NT, ACT — 호주 전국 모든 주소 분석 가능
+          </p>
         </div>
       </div>
     );
