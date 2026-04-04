@@ -579,7 +579,8 @@ async function fetchSuburbsFinder(suburb, state, postcode) {
   try {
     const slug = suburb.toLowerCase().replace(/\s+/g, '-');
     const urls = [
-      `https://www.suburbsfinder.com.au/suburb/${state.toLowerCase()}/${slug}-${postcode}`,
+      `https://www.suburbsfinder.com.au/suburb-profile/${slug}-${state.toLowerCase()}-${postcode}`,
+      `https://www.suburbsfinder.com.au/suburb/${slug}-${state.toLowerCase()}-${postcode}`,
       `https://www.suburbsfinder.com.au/${state.toLowerCase()}/${slug}-${postcode}`,
     ];
     for (const url of urls) {
