@@ -944,21 +944,21 @@ export default async function handler(req, res) {
       const trustedVal = trustedCandidates[0].value;
       const untrustedNums = numCandidates.filter(c => !c.trusted);
       if (untrustedNums.length >= 2) {
-        // Cross-check trusted vs untrusted median — if trusted is >2.5x off, use untrusted median
+        // Cross-check trusted vs untrusted median — if trusted is >1.8x off, use untrusted median
         const sorted = untrustedNums.map(c => c.value).sort((a, b) => a - b);
         const mid = Math.floor(sorted.length / 2);
         const untrustedMedian = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
         const ratio = trustedVal / untrustedMedian;
-        if (ratio > 2.5 || ratio < 0.4) {
+        if (ratio > 1.8 || ratio < 0.5) {
           // Trusted source is way off from untrusted consensus → use untrusted median
           liveFields[key] = untrustedMedian;
         } else {
           liveFields[key] = trustedVal;
         }
       } else if (fallback[key] !== undefined) {
-        // Cross-check trusted vs DB — if >2.5x off, flag it
+        // Cross-check trusted vs DB — if >1.8x off, flag it
         const ratio = trustedVal / fallback[key];
-        if (ratio > 2.5 || ratio < 0.4) {
+        if (ratio > 1.8 || ratio < 0.5) {
           // Trusted but suspicious — skip, let fallback fill it
         } else {
           liveFields[key] = trustedVal;
