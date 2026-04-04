@@ -3,15 +3,38 @@
 // Uses Claude API as intelligent fallback for any suburb
 // Falls back to embedded database when all else fails
 
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-const TIMEOUT = 8000;
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+const TIMEOUT = 10000;
+
+// Full browser-like headers to avoid bot detection
+const BROWSER_HEADERS = {
+  'User-Agent': UA,
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+  'Accept-Language': 'en-AU,en;q=0.9,ko;q=0.8',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Cache-Control': 'no-cache',
+  'Pragma': 'no-cache',
+  'sec-ch-ua': '"Chromium";v="126", "Google Chrome";v="126", "Not-A.Brand";v="8"',
+  'sec-ch-ua-mobile': '?0',
+  'sec-ch-ua-platform': '"macOS"',
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'none',
+  'Sec-Fetch-User': '?1',
+  'Upgrade-Insecure-Requests': '1',
+};
 
 // Helper: fetch with timeout
 async function fetchWithTimeout(url, opts = {}, timeout = TIMEOUT) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
-    const resp = await fetch(url, { ...opts, signal: controller.signal, headers: { 'User-Agent': UA, ...(opts.headers || {}) } });
+    const resp = await fetch(url, {
+      ...opts,
+      signal: controller.signal,
+      headers: { ...BROWSER_HEADERS, ...(opts.headers || {}) },
+      redirect: 'follow',
+    });
     clearTimeout(timer);
     return resp;
   } catch (e) {
@@ -58,12 +81,34 @@ function expandStreet(street) {
 async function fetchDomainPropertyProfile(street, suburb, state, postcode) {
   const data = { source: 'Domain Property Profile', fields: {} };
   try {
-    // Domain uses FULL street types: 75-lakedge-avenue-berkeley-vale-nsw-2261
+    // Strategy 1: Domain's search suggest API (JSON, less bot detection)
+    const searchQuery = `${street}, ${suburb} ${state} ${postcode}`;
+    try {
+      const suggestUrl = `https://suggest.domain.com.au/v1/suggest?query=${encodeURIComponent(searchQuery)}&types=property`;
+      const suggestResp = await fetchWithTimeout(suggestUrl, {
+        headers: { ...BROWSER_HEADERS, 'Accept': 'application/json', 'Referer': 'https://www.domain.com.au/' }
+      });
+      if (suggestResp.ok) {
+        const suggestions = await suggestResp.json();
+        if (Array.isArray(suggestions) && suggestions.length > 0) {
+          const prop = suggestions[0];
+          // Domain suggest API may return property ID for deeper lookup
+          if (prop.id || prop.propertyId) {
+            data.fields._domainPropertyId = prop.id || prop.propertyId;
+          }
+          if (prop.address) data.fields._domainAddress = prop.address;
+        }
+      }
+    } catch (e) { /* suggest API failed, continue to HTML scrape */ }
+
+    // Strategy 2: Direct HTML property profile page
     const fullStreet = expandStreet(street);
     const slug = `${fullStreet}-${suburb}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-');
     const url = `https://www.domain.com.au/property-profile/${slug}-${state.toLowerCase()}-${postcode}`;
     data.urlAttempted = url;
-    const resp = await fetchWithTimeout(url);
+    const resp = await fetchWithTimeout(url, {
+      headers: { ...BROWSER_HEADERS, 'Referer': 'https://www.domain.com.au/suburb-profile/' + suburb.toLowerCase().replace(/\s+/g, '-') + '-' + state.toLowerCase() + '-' + postcode }
+    });
     if (!resp.ok) { data.error = `HTTP ${resp.status}`; return data; }
     const html = await resp.text();
     data.htmlLength = html.length;
@@ -143,33 +188,80 @@ async function fetchREAPropertyProfile(street, suburb, state, postcode) {
     // REA uses ABBREVIATED street types: 75-lakedge-ave-berkeley-vale-nsw-2261
     const abbrevStreet = abbreviateStreet(street);
     const slug = `${abbrevStreet}-${suburb}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-');
-    const url = `https://www.realestate.com.au/property/${slug}-${state.toLowerCase()}-${postcode}`;
-    data.urlAttempted = url;
-    const resp = await fetchWithTimeout(url);
-    if (!resp.ok) { data.error = `HTTP ${resp.status}`; return data; }
-    const html = await resp.text();
-    data.htmlLength = html.length;
 
+    // Strategy 1: REA's GraphQL/ResidentialListing API (less bot detection than HTML pages)
+    try {
+      const apiUrl = `https://www.realestate.com.au/property/${slug}-${state.toLowerCase()}-${postcode}`;
+      const apiResp = await fetchWithTimeout(apiUrl, {
+        headers: {
+          ...BROWSER_HEADERS,
+          'Referer': `https://www.realestate.com.au/${state.toLowerCase()}/`,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        }
+      });
+      if (apiResp.ok) {
+        const html = await apiResp.text();
+        data.urlAttempted = apiUrl;
+        data.htmlLength = html.length;
+        // Check if we got actual content (not a captcha/redirect page)
+        if (html.length > 5000 && !html.includes('captcha') && !html.includes('challenge-platform')) {
+          return parseREAHtml(data, html);
+        }
+        data.error = `Got ${html.length} bytes but appears to be captcha/block page`;
+      } else {
+        data.error = `HTTP ${apiResp.status}`;
+      }
+    } catch (e) { data.error = e.message; }
+
+    // Strategy 2: Try REA's sold property URL pattern (sometimes less protected)
+    if (!data.ok) {
+      try {
+        const soldUrl = `https://www.realestate.com.au/sold/property-house-${state.toLowerCase()}-${suburb.toLowerCase().replace(/\s+/g, '+')}-${postcode}/`;
+        const soldResp = await fetchWithTimeout(soldUrl, {
+          headers: { ...BROWSER_HEADERS, 'Referer': 'https://www.google.com.au/' }
+        });
+        if (soldResp.ok) {
+          const soldHtml = await soldResp.text();
+          // Look for our specific address in sold results
+          const addrPattern = street.replace(/\s+/g, '\\s+');
+          const addrMatch = soldHtml.match(new RegExp(`${addrPattern}[\\s\\S]{0,500}?\\$([\\d,]+)`, 'i'));
+          if (addrMatch) {
+            const soldPrice = parseFloat(addrMatch[1].replace(/,/g, ''));
+            if (soldPrice > 100000) {
+              data.fields.lastSoldPrice = soldPrice;
+              data.ok = true;
+            }
+          }
+        }
+      } catch (e) { /* sold search failed */ }
+    }
+  } catch (e) { data.error = e.message; }
+  return data;
+}
+
+// Parse REA HTML content (extracted to share between strategies)
+function parseREAHtml(data, html) {
+  try {
     // REA uses ArgonautExchange or __NEXT_DATA__ for property data
     const argMatch = html.match(/window\.ArgonautExchange\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/i);
     if (argMatch) {
       try {
         const argData = JSON.parse(argMatch[1]);
-        // Navigate through the nested structure to find property details
         const details = argData?.rpiRecentSales || argData?.propertyDetails || argData;
         if (details) {
-          // Last sold price
           const soldPrice = details.lastSoldPrice || details.price?.soldPrice;
           if (soldPrice && typeof soldPrice === 'number') data.fields.lastSoldPrice = soldPrice;
-          // Estimated value
           const estimate = details.valuation?.mid || details.estimatedValue || details.priceEstimate?.midPrice;
           if (estimate && typeof estimate === 'number') data.fields.listingPrice = estimate;
-          // Property features
           if (details.bedrooms || details.beds) data.fields.beds = details.bedrooms || details.beds;
           if (details.bathrooms || details.baths) data.fields.baths = details.bathrooms || details.baths;
           if (details.carSpaces || details.parking) data.fields.cars = details.carSpaces || details.parking;
-          if (details.landSize || details.landArea) data.fields.landSize = details.landSize || details.landArea;
+          const ld = details.landSize || details.landArea;
+          if (ld && typeof ld === 'number' && ld >= 50) data.fields.landSize = ld;
           if (details.propertyType) data.fields.propertyType = details.propertyType;
+          // REA rental estimate
+          const rentEst = details.rentalEstimate || details.rental?.weeklyRent;
+          if (rentEst && typeof rentEst === 'number' && rentEst >= 100 && rentEst <= 3000) data.fields.listingRent = rentEst;
           if (Object.keys(data.fields).length > 0) data.ok = true;
         }
       } catch (e) { /* ArgonautExchange parse failed */ }
@@ -188,7 +280,8 @@ async function fetchREAPropertyProfile(street, suburb, state, postcode) {
             if (prop.bedrooms) data.fields.beds = prop.bedrooms;
             if (prop.bathrooms) data.fields.baths = prop.bathrooms;
             if (prop.carSpaces || prop.parking) data.fields.cars = prop.carSpaces || prop.parking;
-            if (prop.landSize) data.fields.landSize = prop.landSize;
+            const ld2 = prop.landSize;
+            if (ld2 && typeof ld2 === 'number' && ld2 >= 50) data.fields.landSize = ld2;
             if (prop.propertyType) data.fields.propertyType = prop.propertyType;
             if (Object.keys(data.fields).length > 0) data.ok = true;
           }
