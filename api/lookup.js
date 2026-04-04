@@ -62,9 +62,11 @@ async function fetchDomainPropertyProfile(street, suburb, state, postcode) {
     const fullStreet = expandStreet(street);
     const slug = `${fullStreet}-${suburb}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-');
     const url = `https://www.domain.com.au/property-profile/${slug}-${state.toLowerCase()}-${postcode}`;
+    data.urlAttempted = url;
     const resp = await fetchWithTimeout(url);
-    if (!resp.ok) return data;
+    if (!resp.ok) { data.error = `HTTP ${resp.status}`; return data; }
     const html = await resp.text();
+    data.htmlLength = html.length;
 
     // Try __NEXT_DATA__ JSON
     const nextMatch = html.match(/<script\s+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
@@ -142,9 +144,11 @@ async function fetchREAPropertyProfile(street, suburb, state, postcode) {
     const abbrevStreet = abbreviateStreet(street);
     const slug = `${abbrevStreet}-${suburb}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-');
     const url = `https://www.realestate.com.au/property/${slug}-${state.toLowerCase()}-${postcode}`;
+    data.urlAttempted = url;
     const resp = await fetchWithTimeout(url);
-    if (!resp.ok) return data;
+    if (!resp.ok) { data.error = `HTTP ${resp.status}`; return data; }
     const html = await resp.text();
+    data.htmlLength = html.length;
 
     // REA uses ArgonautExchange or __NEXT_DATA__ for property data
     const argMatch = html.match(/window\.ArgonautExchange\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/i);
@@ -969,6 +973,20 @@ export default async function handler(req, res) {
       sources: listingSources,
     } : null,
     sources: [...listingSources, ...successSources.map(s => s.source)],
+    // Debug: Phase 0 listing attempts
+    listingDebug: listingResults.map(lr => ({
+      source: lr.source,
+      ok: !!lr.ok,
+      url: lr.urlAttempted || null,
+      htmlLen: lr.htmlLength || 0,
+      error: lr.error || null,
+      fields: lr.ok ? Object.keys(lr.fields) : [],
+    })),
+    // Debug: which source provided each key field
+    fieldSources: Object.fromEntries(
+      Object.entries(fieldCandidates).filter(([k]) => ['weeklyRent','medianPrice'].includes(k))
+        .map(([k, cands]) => [k, cands.map(c => ({ src: c.source, val: c.value, trusted: c.trusted }))])
+    ),
     failedSources: failedSources.map(s => ({ source: s.source, error: s.error })),
     liveFieldCount: Object.keys(liveFields).length,
     dataSource: successSources.length > 0

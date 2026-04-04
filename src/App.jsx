@@ -203,6 +203,8 @@ export default function App() {
       dataSource: fetchedData?.dataSource || (localData ? 'database' : 'defaults'),
       sources: fetchedData?.sources || [],
       usedClaude: fetchedData?.usedClaude || false,
+      listingDebug: fetchedData?.listingDebug || [],
+      fieldSources: fetchedData?.fieldSources || {},
       // Individual listing data
       listing,
       listingPrice: listing?.listingPrice || listing?.lastSoldPrice || null,
@@ -435,6 +437,43 @@ export default function App() {
           </tbody>
         </table>
       </div>
+
+      {/* Debug: Data sources per field */}
+      {(d.listingDebug?.length > 0 || d.fieldSources?.weeklyRent) && (
+        <details style={{ margin: '0 0 16px', padding: '8px 12px', background: '#f5f5f5', borderRadius: 6, fontSize: 12 }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Data Sources Debug</summary>
+          {d.listingDebug?.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <strong>Phase 0 (Listing Lookup):</strong>
+              {d.listingDebug.map((l, i) => (
+                <div key={i} style={{ marginLeft: 12, color: l.ok ? '#2e7d32' : '#c62828' }}>
+                  {l.source}: {l.ok ? 'OK' : 'FAIL'} {l.error || ''} {l.htmlLen ? `(${l.htmlLen} bytes)` : ''} {l.url ? <span style={{ opacity: 0.5 }}>{l.url}</span> : ''}
+                </div>
+              ))}
+            </div>
+          )}
+          {d.fieldSources?.weeklyRent && (
+            <div style={{ marginTop: 8 }}>
+              <strong>weeklyRent candidates:</strong>
+              {d.fieldSources.weeklyRent.map((c, i) => (
+                <div key={i} style={{ marginLeft: 12 }}>
+                  {c.src}: ${c.val}/w {c.trusted ? '(trusted)' : ''}
+                </div>
+              ))}
+            </div>
+          )}
+          {d.fieldSources?.medianPrice && (
+            <div style={{ marginTop: 8 }}>
+              <strong>medianPrice candidates:</strong>
+              {d.fieldSources.medianPrice.map((c, i) => (
+                <div key={i} style={{ marginLeft: 12 }}>
+                  {c.src}: {fmt(c.val)} {c.trusted ? '(trusted)' : ''}
+                </div>
+              ))}
+            </div>
+          )}
+        </details>
+      )}
 
       {/* ── 2. Demand Analysis ── */}
       <div className="section">
