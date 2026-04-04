@@ -30,6 +30,26 @@ function rxNum(html, pattern, group = 1) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Street type normalization for URL slug generation
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const STREET_ABBREVS = {
+  'street': 'st', 'avenue': 'ave', 'road': 'rd', 'drive': 'dr',
+  'place': 'pl', 'court': 'ct', 'crescent': 'cres', 'lane': 'ln',
+  'boulevard': 'blvd', 'terrace': 'tce', 'parade': 'pde', 'close': 'cl',
+  'circuit': 'cct', 'way': 'way',
+};
+const STREET_FULL = Object.fromEntries(Object.entries(STREET_ABBREVS).map(([k,v]) => [v, k]));
+
+function abbreviateStreet(street) {
+  return street.replace(/\b(street|avenue|road|drive|place|court|crescent|lane|boulevard|terrace|parade|close|circuit)\b/i,
+    (m) => STREET_ABBREVS[m.toLowerCase()] || m);
+}
+function expandStreet(street) {
+  return street.replace(/\b(st|ave|rd|dr|pl|ct|cres|ln|blvd|tce|pde|cl|cct)\b/i,
+    (m) => STREET_FULL[m.toLowerCase()] || m);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // PHASE 0: Individual Listing Lookup (address-specific)
 // Tries to find the ACTUAL property listing price/rent
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -38,8 +58,9 @@ function rxNum(html, pattern, group = 1) {
 async function fetchDomainPropertyProfile(street, suburb, state, postcode) {
   const data = { source: 'Domain Property Profile', fields: {} };
   try {
-    // URL: domain.com.au/property-profile/75-lakedge-avenue-berkeley-vale-nsw-2261
-    const slug = `${street}-${suburb}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-');
+    // Domain uses FULL street types: 75-lakedge-avenue-berkeley-vale-nsw-2261
+    const fullStreet = expandStreet(street);
+    const slug = `${fullStreet}-${suburb}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-');
     const url = `https://www.domain.com.au/property-profile/${slug}-${state.toLowerCase()}-${postcode}`;
     const resp = await fetchWithTimeout(url);
     if (!resp.ok) return data;
@@ -111,8 +132,9 @@ async function fetchDomainPropertyProfile(street, suburb, state, postcode) {
 async function fetchREAPropertyProfile(street, suburb, state, postcode) {
   const data = { source: 'realestate.com.au', fields: {} };
   try {
-    // REA property profile URL: realestate.com.au/property/75-lakedge-ave-berkeley-vale-nsw-2261
-    const slug = `${street}-${suburb}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-');
+    // REA uses ABBREVIATED street types: 75-lakedge-ave-berkeley-vale-nsw-2261
+    const abbrevStreet = abbreviateStreet(street);
+    const slug = `${abbrevStreet}-${suburb}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-');
     const url = `https://www.realestate.com.au/property/${slug}-${state.toLowerCase()}-${postcode}`;
     const resp = await fetchWithTimeout(url);
     if (!resp.ok) return data;
@@ -460,36 +482,49 @@ async function fetchDomainProfile(suburb, state, postcode) {
         const nextData = JSON.parse(nextDataMatch[1]);
         const props = nextData?.props?.pageProps;
         if (props) {
-          // Navigate to suburb stats within the structured data
+          // Deep-search for suburb stats in nested JSON
           const stats = props.suburbProfile || props.suburbData || props;
-          if (stats.medianSoldPrice || stats.medianPrice) {
-            data.fields.medianPrice = stats.medianSoldPrice || stats.medianPrice;
+          // Look for house-specific data first, then general
+          const houseStats = stats.house || stats.houses || stats.propertyTypeStats?.house || stats;
+
+          // Median price: prefer house median
+          const mp = houseStats.medianSoldPrice || houseStats.medianPrice || stats.medianSoldPrice || stats.medianPrice;
+          if (mp && typeof mp === 'number' && mp > 100000) data.fields.medianPrice = mp;
+
+          // Weekly rent: ONLY accept house median, reject combined/unit values
+          const houseRent = houseStats.medianRentPrice || houseStats.medianWeeklyRent;
+          const generalRent = stats.medianRentPrice || stats.medianWeeklyRent || stats.medianRent;
+          // Use house rent if available, otherwise general but validate range
+          const rentVal = houseRent || generalRent;
+          if (rentVal && typeof rentVal === 'number' && rentVal >= 100 && rentVal <= 2000) {
+            data.fields.weeklyRent = rentVal;
           }
-          if (stats.medianRentPrice || stats.medianWeeklyRent || stats.medianRent) {
-            data.fields.weeklyRent = stats.medianRentPrice || stats.medianWeeklyRent || stats.medianRent;
+
+          if (stats.daysOnMarket || stats.avgDaysOnMarket || houseStats.daysOnMarket) {
+            data.fields.daysOnMarket = houseStats.daysOnMarket || stats.daysOnMarket || stats.avgDaysOnMarket;
           }
-          if (stats.daysOnMarket || stats.avgDaysOnMarket) {
-            data.fields.daysOnMarket = stats.daysOnMarket || stats.avgDaysOnMarket;
+          if (stats.annualGrowth || stats.medianPriceGrowth || houseStats.annualGrowth) {
+            data.fields.annualGrowth = houseStats.annualGrowth || stats.annualGrowth || stats.medianPriceGrowth;
           }
-          if (stats.annualGrowth || stats.medianPriceGrowth) {
-            data.fields.annualGrowth = stats.annualGrowth || stats.medianPriceGrowth;
-          }
-          if (stats.rentalYield) data.fields.grossYield = stats.rentalYield;
-          if (stats.numberSold || stats.salesCount) {
-            data.fields.annualSales = stats.numberSold || stats.salesCount;
+          if (stats.rentalYield || houseStats.rentalYield) data.fields.grossYield = houseStats.rentalYield || stats.rentalYield;
+          if (stats.numberSold || stats.salesCount || houseStats.numberSold) {
+            data.fields.annualSales = houseStats.numberSold || stats.numberSold || stats.salesCount;
           }
           if (Object.keys(data.fields).length > 0) data.ok = true;
         }
       } catch (e) { /* JSON parse failed, fall through to regex */ }
     }
 
-    // Fallback: regex from rendered HTML
+    // Fallback: regex — use STRICT patterns to avoid grabbing wrong numbers
     if (!data.ok) {
-      const mp = rxNum(html, /median\s*(?:sold)?\s*price[^$]*\$([0-9,]+)/i);
-      if (mp) data.fields.medianPrice = mp;
-      const rent = rxNum(html, /median\s*(?:weekly)?\s*rent[^$]*\$([0-9,]+)/i);
-      if (rent) data.fields.weeklyRent = rent;
-      const dom = rxNum(html, /(\d+)\s*days?\s*(?:on\s*market|to\s*sell)/i);
+      // House median price: match "$X,XXX,XXX" right after "house" context
+      const mp = rxNum(html, /(?:house|houses)\s*(?:median)?\s*(?:sold)?\s*(?:price)?[^$]*\$([0-9,]+)/i)
+              || rxNum(html, /median\s*(?:sold)?\s*price\s*(?:for\s*)?(?:house|houses)[^$]*\$([0-9,]+)/i);
+      if (mp && mp > 100000) data.fields.medianPrice = mp;
+      // House rent: must have "house" context AND "/w" or "pw" or "per week"
+      const rent = rxNum(html, /(?:house|houses)\s*(?:median)?\s*(?:weekly)?\s*rent[^$]*\$([0-9,]+)\s*(?:\/?\s*w|pw|per\s*w)/i);
+      if (rent && rent >= 100 && rent <= 2000) data.fields.weeklyRent = rent;
+      const dom = rxNum(html, /(?:house|houses)[^0-9]*(\d+)\s*(?:average\s*)?days?\s*(?:on\s*market|to\s*sell)/i);
       if (dom) data.fields.daysOnMarket = dom;
       if (Object.keys(data.fields).length > 0) data.ok = true;
     }
@@ -684,8 +719,15 @@ export default async function handler(req, res) {
 
   // Extract street from full address for individual listing lookup
   const fullAddress = (address || '').trim();
-  const streetMatch = fullAddress.match(/^(\d+\s+[\w\s]+(?:ave|avenue|st|street|rd|road|dr|drive|pl|place|ct|court|cres|crescent|way|lane|ln|blvd|tce|terrace|pde|parade|cl|close|cct|circuit))/i);
-  const street = streetMatch ? streetMatch[1].trim() : '';
+  const streetMatch = fullAddress.match(/^(\d+[a-z]?\s+[\w\s]+?(?:ave(?:nue)?|st(?:reet)?|rd|road|dr(?:ive)?|pl(?:ace)?|ct|court|cres(?:cent)?|way|la(?:ne)?|ln|blvd|boulevard|tce|terrace|pde|parade|cl(?:ose)?|cct|circuit))\b/i);
+  // Fallback: if regex fails, extract everything before suburb/state/postcode
+  let street = streetMatch ? streetMatch[1].trim() : '';
+  if (!street && s && fullAddress) {
+    const suburbIdx = fullAddress.toUpperCase().indexOf(s);
+    if (suburbIdx > 0) {
+      street = fullAddress.substring(0, suburbIdx).replace(/[,\s]+$/, '').trim();
+    }
+  }
 
   // ── Phase 0 + Phase 1: Run ALL sources in parallel ──
   // Phase 0 = individual listing lookup (REA + Domain property profile)
@@ -795,8 +837,32 @@ export default async function handler(req, res) {
       liveFields[key] = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 
     } else if (trustedCandidates.length === 1) {
-      // 1 trusted source: use it, cross-validate untrusted against it
-      liveFields[key] = trustedCandidates[0].value;
+      // 1 trusted source: use it BUT cross-validate against untrusted median if available
+      const trustedVal = trustedCandidates[0].value;
+      const untrustedNums = numCandidates.filter(c => !c.trusted);
+      if (untrustedNums.length >= 2) {
+        // Cross-check trusted vs untrusted median — if trusted is >2.5x off, use untrusted median
+        const sorted = untrustedNums.map(c => c.value).sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        const untrustedMedian = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        const ratio = trustedVal / untrustedMedian;
+        if (ratio > 2.5 || ratio < 0.4) {
+          // Trusted source is way off from untrusted consensus → use untrusted median
+          liveFields[key] = untrustedMedian;
+        } else {
+          liveFields[key] = trustedVal;
+        }
+      } else if (fallback[key] !== undefined) {
+        // Cross-check trusted vs DB — if >2.5x off, flag it
+        const ratio = trustedVal / fallback[key];
+        if (ratio > 2.5 || ratio < 0.4) {
+          // Trusted but suspicious — skip, let fallback fill it
+        } else {
+          liveFields[key] = trustedVal;
+        }
+      } else {
+        liveFields[key] = trustedVal;
+      }
 
     } else if (numCandidates.length >= 2) {
       // No trusted, but 2+ untrusted: use median
@@ -821,6 +887,17 @@ export default async function handler(req, res) {
   }
 
   // Step 3: Cross-field consistency checks
+  // 3a: If Phase 0 has listing rent, use it to validate suburb weeklyRent
+  if (listingData.listingRent && liveFields.weeklyRent) {
+    const listingRent = listingData.listingRent;
+    const suburbRent = liveFields.weeklyRent;
+    // If suburb rent is >2x the listing rent, suburb data is likely wrong
+    if (suburbRent > listingRent * 2) {
+      delete liveFields.weeklyRent;
+      delete liveFields.grossYield;
+    }
+  }
+  // 3b: Yield-based consistency check
   const checkPrice = liveFields.medianPrice || fallback.medianPrice;
   const checkRent  = liveFields.weeklyRent;
   if (checkPrice && checkRent && typeof checkPrice === 'number' && typeof checkRent === 'number') {
