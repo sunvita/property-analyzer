@@ -449,7 +449,7 @@ export default function App() {
       </div>
 
       {/* Debug: Data sources per field */}
-      {(d.listingDebug?.length > 0 || d.fieldSources?.weeklyRent || d.failedSources?.length > 0) && (
+      {d.dataSource && (
         <details style={{ margin: '0 0 16px', padding: '8px 12px', background: '#f5f5f5', borderRadius: 6, fontSize: 12 }}>
           <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Data Sources Debug {d.scraperApiEnabled != null && <span style={{ fontWeight: 400, color: d.scraperApiEnabled ? '#2e7d32' : '#c62828' }}> | ScraperAPI: {d.scraperApiEnabled ? 'ON' : 'OFF'}</span>}{d.liveFieldCount != null && <span style={{ fontWeight: 400, color: '#555' }}> | liveFields: {d.liveFieldCount}</span>}</summary>
           {d.listingDebug?.length > 0 && (
