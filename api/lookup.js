@@ -29,6 +29,162 @@ function rxNum(html, pattern, group = 1) {
   return v ? parseFloat(v.replace(/,/g, '')) : null;
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PHASE 0: Individual Listing Lookup (address-specific)
+// Tries to find the ACTUAL property listing price/rent
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// Domain Property Profile: past sale/rent history for an address
+async function fetchDomainPropertyProfile(street, suburb, state, postcode) {
+  const data = { source: 'Domain Property Profile', fields: {} };
+  try {
+    // URL: domain.com.au/property-profile/75-lakedge-avenue-berkeley-vale-nsw-2261
+    const slug = `${street}-${suburb}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-');
+    const url = `https://www.domain.com.au/property-profile/${slug}-${state.toLowerCase()}-${postcode}`;
+    const resp = await fetchWithTimeout(url);
+    if (!resp.ok) return data;
+    const html = await resp.text();
+
+    // Try __NEXT_DATA__ JSON
+    const nextMatch = html.match(/<script\s+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
+    if (nextMatch) {
+      try {
+        const nd = JSON.parse(nextMatch[1]);
+        const pp = nd?.props?.pageProps;
+        if (pp) {
+          // Last sold price
+          const soldHistory = pp.soldHistory || pp.sales || pp.saleHistory;
+          if (Array.isArray(soldHistory) && soldHistory.length > 0) {
+            const latest = soldHistory[0];
+            const soldPrice = latest.price || latest.soldPrice || latest.amount;
+            if (soldPrice && typeof soldPrice === 'number') {
+              data.fields.lastSoldPrice = soldPrice;
+              data.fields.lastSoldDate = latest.date || latest.soldDate || null;
+            }
+          }
+          // Estimated value / current listing price
+          if (pp.price || pp.listingPrice || pp.estimatedValue) {
+            data.fields.listingPrice = pp.price || pp.listingPrice || pp.estimatedValue;
+          }
+          // Property details
+          if (pp.beds || pp.bedrooms) data.fields.beds = pp.beds || pp.bedrooms;
+          if (pp.baths || pp.bathrooms) data.fields.baths = pp.baths || pp.bathrooms;
+          if (pp.parking || pp.carSpaces) data.fields.cars = pp.parking || pp.carSpaces;
+          if (pp.landSize || pp.landArea) data.fields.landSize = pp.landSize || pp.landArea;
+          if (pp.propertyType) data.fields.propertyType = pp.propertyType;
+          // Rental history
+          const rentHistory = pp.rentHistory || pp.rentalHistory || pp.rentals;
+          if (Array.isArray(rentHistory) && rentHistory.length > 0) {
+            const latestRent = rentHistory[0];
+            const rentPrice = latestRent.price || latestRent.weeklyRent || latestRent.amount;
+            if (rentPrice && typeof rentPrice === 'number') {
+              data.fields.listingRent = rentPrice;
+            }
+          }
+          if (Object.keys(data.fields).length > 0) data.ok = true;
+        }
+      } catch (e) { /* JSON parse failed */ }
+    }
+
+    // Fallback: regex from rendered HTML
+    if (!data.ok) {
+      const sold = rxNum(html, /(?:sold|sale\s*price|last\s*sold)[^$]*\$([0-9,]+)/i);
+      if (sold) { data.fields.lastSoldPrice = sold; data.ok = true; }
+      const estimate = rxNum(html, /(?:estimated?\s*value|price\s*estimate|price\s*guide)[^$]*\$([0-9,]+)/i);
+      if (estimate) { data.fields.listingPrice = estimate; data.ok = true; }
+      const beds = rxNum(html, /(\d+)\s*(?:bed(?:room)?s?)\b/i);
+      if (beds) data.fields.beds = beds;
+      const baths = rxNum(html, /(\d+)\s*(?:bath(?:room)?s?)\b/i);
+      if (baths) data.fields.baths = baths;
+      const cars = rxNum(html, /(\d+)\s*(?:car\s*(?:space|park)?s?|garage)\b/i);
+      if (cars) data.fields.cars = cars;
+      const land = rxNum(html, /(\d+)\s*m[²2]/i);
+      if (land) data.fields.landSize = land;
+      const rent = rxNum(html, /(?:rent(?:ed|al)?)[^$]*\$([0-9,]+)\s*(?:\/?\s*w(?:ee)?k|pw)/i);
+      if (rent) { data.fields.listingRent = rent; data.ok = true; }
+    }
+  } catch (e) { data.error = e.message; }
+  return data;
+}
+
+// REA (realestate.com.au) property profile: largest AU listing database
+async function fetchREAPropertyProfile(street, suburb, state, postcode) {
+  const data = { source: 'realestate.com.au', fields: {} };
+  try {
+    // REA property profile URL: realestate.com.au/property/75-lakedge-ave-berkeley-vale-nsw-2261
+    const slug = `${street}-${suburb}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-');
+    const url = `https://www.realestate.com.au/property/${slug}-${state.toLowerCase()}-${postcode}`;
+    const resp = await fetchWithTimeout(url);
+    if (!resp.ok) return data;
+    const html = await resp.text();
+
+    // REA uses ArgonautExchange or __NEXT_DATA__ for property data
+    const argMatch = html.match(/window\.ArgonautExchange\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/i);
+    if (argMatch) {
+      try {
+        const argData = JSON.parse(argMatch[1]);
+        // Navigate through the nested structure to find property details
+        const details = argData?.rpiRecentSales || argData?.propertyDetails || argData;
+        if (details) {
+          // Last sold price
+          const soldPrice = details.lastSoldPrice || details.price?.soldPrice;
+          if (soldPrice && typeof soldPrice === 'number') data.fields.lastSoldPrice = soldPrice;
+          // Estimated value
+          const estimate = details.valuation?.mid || details.estimatedValue || details.priceEstimate?.midPrice;
+          if (estimate && typeof estimate === 'number') data.fields.listingPrice = estimate;
+          // Property features
+          if (details.bedrooms || details.beds) data.fields.beds = details.bedrooms || details.beds;
+          if (details.bathrooms || details.baths) data.fields.baths = details.bathrooms || details.baths;
+          if (details.carSpaces || details.parking) data.fields.cars = details.carSpaces || details.parking;
+          if (details.landSize || details.landArea) data.fields.landSize = details.landSize || details.landArea;
+          if (details.propertyType) data.fields.propertyType = details.propertyType;
+          if (Object.keys(data.fields).length > 0) data.ok = true;
+        }
+      } catch (e) { /* ArgonautExchange parse failed */ }
+    }
+
+    // Try __NEXT_DATA__ too
+    if (!data.ok) {
+      const nextMatch = html.match(/<script\s+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
+      if (nextMatch) {
+        try {
+          const nd = JSON.parse(nextMatch[1]);
+          const pp = nd?.props?.pageProps;
+          if (pp?.property || pp?.listing) {
+            const prop = pp.property || pp.listing;
+            if (prop.price) data.fields.listingPrice = typeof prop.price === 'number' ? prop.price : parseFloat(String(prop.price).replace(/[^0-9.]/g, ''));
+            if (prop.bedrooms) data.fields.beds = prop.bedrooms;
+            if (prop.bathrooms) data.fields.baths = prop.bathrooms;
+            if (prop.carSpaces || prop.parking) data.fields.cars = prop.carSpaces || prop.parking;
+            if (prop.landSize) data.fields.landSize = prop.landSize;
+            if (prop.propertyType) data.fields.propertyType = prop.propertyType;
+            if (Object.keys(data.fields).length > 0) data.ok = true;
+          }
+        } catch (e) { /* parse failed */ }
+      }
+    }
+
+    // Final regex fallback
+    if (!data.ok) {
+      const sold = rxNum(html, /(?:sold|sale\s*price|last\s*sold)[^$]*\$([0-9,]+)/i);
+      if (sold && sold > 100000) { data.fields.lastSoldPrice = sold; data.ok = true; }
+      const estimate = rxNum(html, /(?:estimated?\s*value|price\s*estimate|price\s*guide)[^$]*\$([0-9,]+)/i);
+      if (estimate && estimate > 100000) { data.fields.listingPrice = estimate; data.ok = true; }
+      const beds = rxNum(html, /(\d+)\s*(?:bed(?:room)?s?)\b/i);
+      if (beds && beds <= 10) data.fields.beds = beds;
+      const baths = rxNum(html, /(\d+)\s*(?:bath(?:room)?s?)\b/i);
+      if (baths && baths <= 10) data.fields.baths = baths;
+      const land = rxNum(html, /(\d+)\s*m[²2]/i);
+      if (land && land > 50 && land < 100000) data.fields.landSize = land;
+    }
+  } catch (e) { data.error = e.message; }
+  return data;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PHASE 1: Suburb-level data sources
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 // ─── SOURCE 1: BoomScore ───
 async function fetchBoomScore(suburb, state, postcode) {
   const data = { source: 'BoomScore', fields: {} };
@@ -526,8 +682,19 @@ export default async function handler(req, res) {
   const st = (state || 'NSW').toUpperCase().trim();
   const hasFallback = !!FALLBACK_DB[s];
 
-  // ── Phase 1: Run ALL web sources in parallel (12 sources) ──
-  const webResults = await Promise.allSettled([
+  // Extract street from full address for individual listing lookup
+  const fullAddress = (address || '').trim();
+  const streetMatch = fullAddress.match(/^(\d+\s+[\w\s]+(?:ave|avenue|st|street|rd|road|dr|drive|pl|place|ct|court|cres|crescent|way|lane|ln|blvd|tce|terrace|pde|parade|cl|close|cct|circuit))/i);
+  const street = streetMatch ? streetMatch[1].trim() : '';
+
+  // ── Phase 0 + Phase 1: Run ALL sources in parallel ──
+  // Phase 0 = individual listing lookup (REA + Domain property profile)
+  // Phase 1 = suburb-level data (12 sources)
+  const allResults = await Promise.allSettled([
+    // Phase 0: Individual listing (runs in parallel with Phase 1)
+    street ? fetchREAPropertyProfile(street, s, st, pc) : Promise.resolve({ source: 'realestate.com.au', fields: {} }),
+    street ? fetchDomainPropertyProfile(street, s, st, pc) : Promise.resolve({ source: 'Domain Property Profile', fields: {} }),
+    // Phase 1: Suburb-level sources
     fetchBoomScore(s, st, pc),        // 1. Demand/Supply
     fetchHtag(s, st, pc),             // 1b. Demand/Supply
     fetchLandchecker(s, st, pc),      // 2. Property type/Income
@@ -542,9 +709,26 @@ export default async function handler(req, res) {
     fetchABS(pc),                     // 11. Census data
   ]);
 
-  const allSources = webResults.map(r =>
-    r.status === 'fulfilled' ? r.value : { source: 'unknown', error: 'rejected' }
-  );
+  // Separate Phase 0 (individual listing) from Phase 1 (suburb data)
+  const listingResults = allResults.slice(0, 2).map(r => r.status === 'fulfilled' ? r.value : { source: 'unknown', fields: {} });
+  const webResults = allResults.slice(2).map(r => r.status === 'fulfilled' ? r.value : { source: 'unknown', error: 'rejected' });
+
+  // Extract individual listing data (price, rent, beds, baths, etc.)
+  let listingData = {};
+  const listingSources = [];
+  for (const lr of listingResults) {
+    if (lr.ok) {
+      listingSources.push(lr.source);
+      // Listing-specific fields: listingPrice, listingRent, lastSoldPrice, beds, baths, cars, landSize
+      for (const [key, val] of Object.entries(lr.fields)) {
+        if (val !== undefined && val !== null && !listingData[key]) {
+          listingData[key] = val;
+        }
+      }
+    }
+  }
+
+  const allSources = webResults;
   let successSources = allSources.filter(s => s.ok);
 
   // ── SMART DATA VALIDATION ──
@@ -688,11 +872,24 @@ export default async function handler(req, res) {
       floodZone: liveFields.floodZone || null,
       bushfireRisk: liveFields.bushfireRisk || null,
     },
-    sources: successSources.map(s => s.source),
+    // Individual listing data (from REA / Domain property profile)
+    listing: Object.keys(listingData).length > 0 ? {
+      listingPrice: listingData.listingPrice || null,
+      listingRent: listingData.listingRent || null,
+      lastSoldPrice: listingData.lastSoldPrice || null,
+      lastSoldDate: listingData.lastSoldDate || null,
+      beds: listingData.beds || null,
+      baths: listingData.baths || null,
+      cars: listingData.cars || null,
+      landSize: listingData.landSize || null,
+      propertyType: listingData.propertyType || null,
+      sources: listingSources,
+    } : null,
+    sources: [...listingSources, ...successSources.map(s => s.source)],
     failedSources: failedSources.map(s => ({ source: s.source, error: s.error })),
     liveFieldCount: Object.keys(liveFields).length,
     dataSource: successSources.length > 0
-      ? `live(${successSources.length}/${allSources.length + (claudeResult ? 1 : 0)})`
+      ? `live(${successSources.length + listingSources.length}/${allSources.length + 2 + (claudeResult ? 1 : 0)})`
       : (hasFallback ? 'database' : 'defaults'),
     usedClaude: !!claudeResult?.ok,
   };

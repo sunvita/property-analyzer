@@ -191,6 +191,9 @@ export default function App() {
     const postcode = p.postcode || fetchedData?.postcode || localData?.postcode || '2261';
     const state = p.state || fetchedData?.state || localData?.state || 'NSW';
 
+    // Individual listing data (from REA / Domain property profile)
+    const listing = fetchedData?.listing || null;
+
     const finalData = {
       ...stats,
       postcode,
@@ -200,6 +203,15 @@ export default function App() {
       dataSource: fetchedData?.dataSource || (localData ? 'database' : 'defaults'),
       sources: fetchedData?.sources || [],
       usedClaude: fetchedData?.usedClaude || false,
+      // Individual listing data
+      listing,
+      listingPrice: listing?.listingPrice || listing?.lastSoldPrice || null,
+      listingRent: listing?.listingRent || null,
+      beds: listing?.beds || null,
+      baths: listing?.baths || null,
+      cars: listing?.cars || null,
+      landSize: listing?.landSize || null,
+      propertyType: listing?.propertyType || null,
       // Extra fields from specialized sources
       affluenceScore: fetchedData?.suburbStats?.affluenceScore || null,
       crimeRate: fetchedData?.suburbStats?.crimeRate || null,
@@ -210,8 +222,12 @@ export default function App() {
     };
 
     setData(finalData);
-    setPriceStr(String(finalData.medianPrice));
-    setRentStr(String(finalData.weeklyRent));
+    // Price priority: listing price > suburb median
+    const initialPrice = finalData.listingPrice || finalData.medianPrice;
+    // Rent priority: listing rent > suburb median
+    const initialRent = finalData.listingRent || finalData.weeklyRent;
+    setPriceStr(String(initialPrice));
+    setRentStr(String(initialRent));
     setLvr(80);
     setRateStr('6.0');
     setIsIO(true);
@@ -380,6 +396,22 @@ export default function App() {
       {/* ── 1. Property Overview ── */}
       <div className="section">
         <h2>1. 매물 개요 (Property Overview)</h2>
+
+        {/* Individual listing info (from REA / Domain) */}
+        {d.listing && (
+          <div className="highlight" style={{ marginBottom: 16, background: '#e8f5e9', borderLeft: '4px solid #2e7d32' }}>
+            <strong>매물 정보 (REA/Domain)</strong>
+            {d.listingPrice && <span> | 가격: {fmt(d.listingPrice)}</span>}
+            {d.listing.lastSoldPrice && <span> | 최근 매매가: {fmt(d.listing.lastSoldPrice)}{d.listing.lastSoldDate ? ` (${d.listing.lastSoldDate})` : ''}</span>}
+            {d.listingRent && <span> | 렌트: ${d.listingRent}/w</span>}
+            {d.beds && <span> | {d.beds}bed</span>}
+            {d.baths && <span> {d.baths}bath</span>}
+            {d.cars && <span> {d.cars}car</span>}
+            {d.landSize && <span> | {d.landSize}m²</span>}
+            {d.listing.sources && <span style={{ opacity: 0.6, fontSize: 11 }}> — {d.listing.sources.join(', ')}</span>}
+          </div>
+        )}
+
         <div className="score-card">
           <div className="score-item"><div className="value">{fmtK(d.medianPrice)}</div><div className="label">Median (House)</div></div>
           <div className="score-item"><div className="value">${d.weeklyRent}/w</div><div className="label">Weekly Rent</div></div>
@@ -391,10 +423,12 @@ export default function App() {
         <table>
           <thead><tr><th>항목</th><th>내용</th><th>평가</th></tr></thead>
           <tbody>
+            {d.listingPrice && <tr style={{ background: '#f1f8e9' }}><td><strong>매물 가격 (Listing)</strong></td><td><strong>{fmt(d.listingPrice)}</strong></td><td>REA/Domain</td></tr>}
             <tr><td>지역 중간 가격</td><td>{fmt(d.medianPrice)}</td><td>{region} 수준</td></tr>
             <tr><td>연간 자본 성장률</td><td>{pct(d.annualGrowth)}</td><td><Badge text={d.annualGrowth > 5 ? '양호' : '보통'} /></td></tr>
             <tr><td>렌탈 수익률 (Gross)</td><td>{pct((d.weeklyRent * 52) / d.medianPrice * 100, 2)}</td><td><Badge text={(d.weeklyRent * 52 / d.medianPrice * 100) > 4.5 ? '양호' : '보통'} /></td></tr>
-            <tr><td>주간 렌트</td><td>${d.weeklyRent}/week</td><td>{region} 수준</td></tr>
+            {d.listingRent && <tr style={{ background: '#f1f8e9' }}><td><strong>매물 렌트 (Listing)</strong></td><td><strong>${d.listingRent}/week</strong></td><td>REA/Domain</td></tr>}
+            <tr><td>주간 렌트 (미디언)</td><td>${d.weeklyRent}/week</td><td>{region} 수준</td></tr>
             <tr><td>BoomScore</td><td>{d.boomScore}/100 - {d.boomScore >= 60 ? 'Strong' : d.boomScore >= 45 ? 'Healthy' : 'Weak'} Market</td><td><Badge text="안정적" type="badge-blue" /></td></tr>
             <tr><td>평균 매물 체류</td><td>{d.daysOnMarket}일</td><td><Badge text={d.daysOnMarket < 30 ? '빠른 거래' : '보통'} /></td></tr>
             <tr><td>연간 매매 건수</td><td>{d.annualSales}건 (12개월)</td><td><Badge text={d.annualSales > 100 ? '활발' : '보통'} /></td></tr>
