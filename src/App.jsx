@@ -431,7 +431,7 @@ export default function App() {
             <tr><td>렌탈 수익률 (Gross)</td><td>{pct(((d.listingRent || d.weeklyRent) * 52) / (d.listingPrice || d.medianPrice) * 100, 2)}</td><td><Badge text={((d.listingRent || d.weeklyRent) * 52 / (d.listingPrice || d.medianPrice) * 100) > 4.5 ? '양호' : '보통'} /></td></tr>
             {d.listingRent && <tr style={{ background: '#f1f8e9' }}><td><strong>매물 렌트 (Listing)</strong></td><td><strong>${d.listingRent}/week</strong></td><td>REA/Domain</td></tr>}
             {d.listingRent && <tr><td>지역 미디언 렌트</td><td>${d.weeklyRent}/week</td><td>{region} 수준</td></tr>}
-            {!d.listingRent && <tr><td>주간 렌트 (미디언)</td><td>${d.weeklyRent}/week</td><td>{region} 수준</td></tr>}
+            {!d.listingRent && <tr><td>주간 렌트 (미디언)</td><td>${d.weeklyRent}/week</td><td>{region} 수준 <span style={{ fontSize: 11, opacity: 0.7 }}>· 현금흐름 분석에서 조정 가능</span></td></tr>}
             <tr><td>BoomScore</td><td>{d.boomScore}/100 - {d.boomScore >= 60 ? 'Strong' : d.boomScore >= 45 ? 'Healthy' : 'Weak'} Market</td><td><Badge text="안정적" type="badge-blue" /></td></tr>
             <tr><td>평균 매물 체류</td><td>{d.daysOnMarket}일</td><td><Badge text={d.daysOnMarket < 30 ? '빠른 거래' : '보통'} /></td></tr>
             <tr><td>연간 매매 건수</td><td>{d.annualSales}건 (12개월)</td><td><Badge text={d.annualSales > 100 ? '활발' : '보통'} /></td></tr>
