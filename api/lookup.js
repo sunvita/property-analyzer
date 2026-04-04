@@ -45,11 +45,11 @@ async function fetchWithTimeout(url, opts = {}, timeout = TIMEOUT) {
 
 // Helper: fetch via ScraperAPI (bypasses bot detection for blocked sites)
 // Requires SCRAPER_API_KEY env var — falls back to direct fetch if absent
-// render=true uses headless browser (5x credits) for JS-rendered pages
-async function fetchViaScraperAPI(url, timeout = 25000, render = false) {
+// Timeout kept at 7s to stay within Vercel Hobby 10s function limit
+async function fetchViaScraperAPI(url, timeout = 7000) {
   const key = process.env.SCRAPER_API_KEY;
   if (!key) return fetchWithTimeout(url, {}, timeout);
-  const scraperUrl = `https://api.scraperapi.com?api_key=${key}&url=${encodeURIComponent(url)}&country_code=au&render=${render ? 'true' : 'false'}`;
+  const scraperUrl = `https://api.scraperapi.com?api_key=${key}&url=${encodeURIComponent(url)}&country_code=au&render=false`;
   return fetchWithTimeout(scraperUrl, { headers: {} }, timeout);
 }
 
@@ -617,10 +617,9 @@ async function fetchSuburbsFinder(suburb, state, postcode) {
 async function fetchSQM(postcode) {
   const data = { source: 'SQM Research', fields: {} };
   try {
-    // Weekly rents page — render=true because SQM uses JS to populate table
+    // Weekly rents page — render=false to stay within Vercel 10s limit
     const rentResp = await fetchViaScraperAPI(
-      `https://sqmresearch.com.au/weekly-rents.php?postcode=${postcode}&t=1`,
-      25000, true
+      `https://sqmresearch.com.au/weekly-rents.php?postcode=${postcode}&t=1`
     );
     if (rentResp.ok) {
       const html = await rentResp.text();
@@ -646,6 +645,27 @@ async function fetchSQM(postcode) {
       data.error = `HTTP ${rentResp.status}`;
     }
   } catch (e) { data.error = `rent_err: ${e.message}`; }
+
+  // Also try graph.php?mode=5 = asking rents chart data (JSON-like)
+  if (!data.fields.weeklyRent) {
+    try {
+      const rentGraphResp = await fetchViaScraperAPI(`https://sqmresearch.com.au/graph.php?postcode=${postcode}&mode=5&t=1`);
+      if (rentGraphResp.ok) {
+        const rg = await rentGraphResp.text();
+        // Chart data often has the latest value as the last number in a JS array
+        // e.g. data.addRows([['2024-10',650,420],...]) — houses is first numeric col
+        const rowMatches = [...rg.matchAll(/addRows?\s*\(\s*\[[\s\S]*?(\d{3,4})\s*,\s*(\d{3,4})/g)];
+        if (rowMatches.length > 0) {
+          const last = rowMatches[rowMatches.length - 1];
+          const val = parseFloat(last[1]);
+          if (val >= 200 && val <= 2000) { data.fields.weeklyRent = val; data.ok = true; }
+        }
+        // Also try simple pattern: last 3-4 digit number after "houses"
+        const rgRent = rxNum(rg, /houses?[^0-9]{0,30}([4-9][0-9]{2}|[1-9][0-9]{3})/i);
+        if (rgRent && !data.fields.weeklyRent) { data.fields.weeklyRent = rgRent; data.ok = true; }
+      }
+    } catch (e) { /* SQM rent graph failed */ }
+  }
 
   try {
     // Median price graph
