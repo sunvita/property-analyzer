@@ -113,69 +113,122 @@ async function fetchDomainPropertyProfile(street, suburb, state, postcode) {
     const html = await resp.text();
     data.htmlLength = html.length;
 
-    // Try __NEXT_DATA__ JSON
+    // Try __NEXT_DATA__ JSON — Domain uses Apollo GraphQL cache
     const nextMatch = html.match(/<script\s+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
     if (nextMatch) {
       try {
         const nd = JSON.parse(nextMatch[1]);
         const pp = nd?.props?.pageProps;
         if (pp) {
-          // Last sold price
-          const soldHistory = pp.soldHistory || pp.sales || pp.saleHistory;
-          if (Array.isArray(soldHistory) && soldHistory.length > 0) {
-            const latest = soldHistory[0];
-            const soldPrice = latest.price || latest.soldPrice || latest.amount;
-            if (soldPrice && typeof soldPrice === 'number') {
-              data.fields.lastSoldPrice = soldPrice;
-              data.fields.lastSoldDate = latest.date || latest.soldDate || null;
+          // ── Strategy A: Apollo State (primary — this is how Domain stores data) ──
+          const apollo = pp['__APOLLO_STATE__'];
+          if (apollo) {
+            const propKey = Object.keys(apollo).find(k => k.startsWith('Property:'));
+            const prop = propKey ? apollo[propKey] : null;
+            if (prop) {
+              // Rental estimate (most important!)
+              const rentEst = prop.rentalEstimate;
+              if (rentEst?.weeklyRentEstimate && typeof rentEst.weeklyRentEstimate === 'number') {
+                data.fields.listingRent = rentEst.weeklyRentEstimate;
+              }
+              // Valuation (estimated value range)
+              const val = prop.valuation;
+              if (val?.midPrice && typeof val.midPrice === 'number' && val.midPrice > 100000) {
+                data.fields.estimatedValue = val.midPrice;
+              }
+              // Active listing price (from listings array)
+              if (Array.isArray(prop.listings) && prop.listings.length > 0) {
+                const liveListing = prop.listings.find(l => l.status === 'LIVE') || prop.listings[0];
+                const displayPrice = liveListing?.priceDetails?.displayPrice;
+                if (displayPrice) {
+                  const priceNum = parseFloat(displayPrice.replace(/[^0-9.]/g, ''));
+                  if (priceNum > 100000) data.fields.listingPrice = priceNum;
+                }
+                data.fields._listingType = liveListing?.type; // BUY or RENT
+              }
+              // Property details
+              if (prop.bedrooms) data.fields.beds = prop.bedrooms;
+              if (prop.bathrooms) data.fields.baths = prop.bathrooms;
+              if (prop.parkingSpaces) data.fields.cars = prop.parkingSpaces;
+              // landArea with unit key: landArea({"unit":"SQUARE_METERS"})
+              const landKey = Object.keys(prop).find(k => k.startsWith('landArea'));
+              const landVal = landKey ? prop[landKey] : null;
+              if (landVal && typeof landVal === 'number' && landVal >= 50 && landVal < 100000) {
+                data.fields.landSize = landVal;
+              }
+              if (prop.type) data.fields.propertyType = prop.type; // House, Unit, etc.
+              // Timeline for sale history
+              if (prop.timeline) {
+                try {
+                  const events = Array.isArray(prop.timeline) ? prop.timeline :
+                    (prop.timeline.edges || []).map(e => e.node);
+                  const saleEvent = events.find(e => e?.category === 'SOLD' || e?.__typename?.includes('Sale'));
+                  if (saleEvent) {
+                    const sp = saleEvent.price || saleEvent.amount;
+                    if (sp && typeof sp === 'number' && sp > 100000) {
+                      data.fields.lastSoldPrice = sp;
+                      data.fields.lastSoldDate = saleEvent.date || null;
+                    }
+                  }
+                } catch (e) { /* timeline parse failed */ }
+              }
+              if (Object.keys(data.fields).length > 0) data.ok = true;
             }
           }
-          // Estimated value / current listing price
-          // Avoid duplicating soldPrice as listingPrice
-          const candidateListingPrice = pp.listingPrice || pp.estimatedValue || pp.price;
-          if (candidateListingPrice && typeof candidateListingPrice === 'number') {
-            // Only set listingPrice if it's different from lastSoldPrice (avoid duplication)
-            if (!data.fields.lastSoldPrice || Math.abs(candidateListingPrice - data.fields.lastSoldPrice) > 1000) {
-              data.fields.listingPrice = candidateListingPrice;
+
+          // ── Strategy B: Direct pageProps fields (legacy fallback) ──
+          if (!data.ok) {
+            const soldHistory = pp.soldHistory || pp.sales || pp.saleHistory;
+            if (Array.isArray(soldHistory) && soldHistory.length > 0) {
+              const latest = soldHistory[0];
+              const soldPrice = latest.price || latest.soldPrice || latest.amount;
+              if (soldPrice && typeof soldPrice === 'number') {
+                data.fields.lastSoldPrice = soldPrice;
+                data.fields.lastSoldDate = latest.date || latest.soldDate || null;
+              }
             }
-          }
-          // Property details
-          if (pp.beds || pp.bedrooms) data.fields.beds = pp.beds || pp.bedrooms;
-          if (pp.baths || pp.bathrooms) data.fields.baths = pp.baths || pp.bathrooms;
-          if (pp.parking || pp.carSpaces) data.fields.cars = pp.parking || pp.carSpaces;
-          const rawLand = pp.landSize || pp.landArea;
-          if (rawLand && typeof rawLand === 'number' && rawLand >= 50 && rawLand < 100000) data.fields.landSize = rawLand;
-          if (pp.propertyType) data.fields.propertyType = pp.propertyType;
-          // Rental history
-          const rentHistory = pp.rentHistory || pp.rentalHistory || pp.rentals;
-          if (Array.isArray(rentHistory) && rentHistory.length > 0) {
-            const latestRent = rentHistory[0];
-            const rentPrice = latestRent.price || latestRent.weeklyRent || latestRent.amount;
-            if (rentPrice && typeof rentPrice === 'number') {
-              data.fields.listingRent = rentPrice;
+            const candidateLP = pp.listingPrice || pp.estimatedValue || pp.price;
+            if (candidateLP && typeof candidateLP === 'number' && candidateLP > 100000) {
+              if (!data.fields.lastSoldPrice || Math.abs(candidateLP - data.fields.lastSoldPrice) > 1000) {
+                data.fields.listingPrice = candidateLP;
+              }
             }
+            if (pp.beds || pp.bedrooms) data.fields.beds = pp.beds || pp.bedrooms;
+            if (pp.baths || pp.bathrooms) data.fields.baths = pp.baths || pp.bathrooms;
+            if (pp.parking || pp.carSpaces) data.fields.cars = pp.parking || pp.carSpaces;
+            const rawLand = pp.landSize || pp.landArea;
+            if (rawLand && typeof rawLand === 'number' && rawLand >= 50 && rawLand < 100000) data.fields.landSize = rawLand;
+            if (pp.propertyType) data.fields.propertyType = pp.propertyType;
+            const rentHistory = pp.rentHistory || pp.rentalHistory || pp.rentals;
+            if (Array.isArray(rentHistory) && rentHistory.length > 0) {
+              const latestRent = rentHistory[0];
+              const rentPrice = latestRent.price || latestRent.weeklyRent || latestRent.amount;
+              if (rentPrice && typeof rentPrice === 'number') data.fields.listingRent = rentPrice;
+            }
+            if (Object.keys(data.fields).length > 0) data.ok = true;
           }
-          if (Object.keys(data.fields).length > 0) data.ok = true;
         }
       } catch (e) { /* JSON parse failed */ }
     }
 
     // Fallback: regex from rendered HTML
     if (!data.ok) {
+      const priceGuide = rxNum(html, /Price\s*Guide[^$]*\$([0-9,]+)/i);
+      if (priceGuide && priceGuide > 100000) { data.fields.listingPrice = priceGuide; data.ok = true; }
       const sold = rxNum(html, /(?:sold|sale\s*price|last\s*sold)[^$]*\$([0-9,]+)/i);
-      if (sold) { data.fields.lastSoldPrice = sold; data.ok = true; }
-      const estimate = rxNum(html, /(?:estimated?\s*value|price\s*estimate|price\s*guide)[^$]*\$([0-9,]+)/i);
-      if (estimate) { data.fields.listingPrice = estimate; data.ok = true; }
+      if (sold && sold > 100000) { data.fields.lastSoldPrice = sold; data.ok = true; }
+      const estimate = rxNum(html, /(?:estimated?\s*value|price\s*estimate)[^$]*\$([0-9,]+)/i);
+      if (estimate && estimate > 100000 && !data.fields.listingPrice) { data.fields.listingPrice = estimate; data.ok = true; }
       const beds = rxNum(html, /(\d+)\s*(?:bed(?:room)?s?)\b/i);
-      if (beds) data.fields.beds = beds;
+      if (beds && beds <= 10) data.fields.beds = beds;
       const baths = rxNum(html, /(\d+)\s*(?:bath(?:room)?s?)\b/i);
-      if (baths) data.fields.baths = baths;
+      if (baths && baths <= 10) data.fields.baths = baths;
       const cars = rxNum(html, /(\d+)\s*(?:car\s*(?:space|park)?s?|garage)\b/i);
-      if (cars) data.fields.cars = cars;
+      if (cars && cars <= 10) data.fields.cars = cars;
       const land = rxNum(html, /(\d[\d,]+)\s*m[²2]/i);
       if (land && land >= 50 && land < 100000) data.fields.landSize = land;
-      const rent = rxNum(html, /(?:rent(?:ed|al)?)[^$]*\$([0-9,]+)\s*(?:\/?\s*w(?:ee)?k|pw)/i);
-      if (rent) { data.fields.listingRent = rent; data.ok = true; }
+      const rent = rxNum(html, /(?:rent(?:al)?\s*estimate|weekly\s*rent)[^$]*\$([0-9,]+)/i);
+      if (rent && rent >= 100 && rent <= 3000) { data.fields.listingRent = rent; data.ok = true; }
     }
   } catch (e) { data.error = e.message; }
   return data;
@@ -213,16 +266,46 @@ async function fetchREAPropertyProfile(street, suburb, state, postcode) {
       }
     } catch (e) { data.error = e.message; }
 
-    // Strategy 2: Try REA's sold property URL pattern (sometimes less protected)
+    // Strategy 2: Try REA buy listing search (different rate limit pool)
     if (!data.ok) {
       try {
-        const soldUrl = `https://www.realestate.com.au/sold/property-house-${state.toLowerCase()}-${suburb.toLowerCase().replace(/\s+/g, '+')}-${postcode}/`;
+        const buyUrl = `https://www.realestate.com.au/buy/in-${suburb.toLowerCase().replace(/\s+/g, '-')},+${state.toLowerCase()}+${postcode}/list-1`;
+        const buyResp = await fetchWithTimeout(buyUrl, {
+          headers: { ...BROWSER_HEADERS, 'Referer': 'https://www.google.com.au/' }
+        });
+        if (buyResp.ok) {
+          const buyHtml = await buyResp.text();
+          data.urlAttempted = buyUrl;
+          data.htmlLength = buyHtml.length;
+          // Look for our specific address in buy results
+          const addrPattern = street.replace(/\s+/g, '\\s+');
+          const addrMatch = buyHtml.match(new RegExp(`${addrPattern}[\\s\\S]{0,500}?\\$([\\d,]+)`, 'i'));
+          if (addrMatch) {
+            const price = parseFloat(addrMatch[1].replace(/,/g, ''));
+            if (price > 100000) {
+              data.fields.listingPrice = price;
+              data.ok = true;
+            }
+          }
+          // Also try to extract rent estimate from buy listing
+          const rentMatch = buyHtml.match(new RegExp(`${addrPattern}[\\s\\S]{0,1000}?\\$([\\d,]+)\\s*(?:/\\s*w|pw|per\\s*w)`, 'i'));
+          if (rentMatch) {
+            const rent = parseFloat(rentMatch[1].replace(/,/g, ''));
+            if (rent >= 100 && rent <= 3000) data.fields.listingRent = rent;
+          }
+        }
+      } catch (e) { /* buy search failed */ }
+    }
+
+    // Strategy 3: Try REA sold search
+    if (!data.ok) {
+      try {
+        const soldUrl = `https://www.realestate.com.au/sold/in-${suburb.toLowerCase().replace(/\s+/g, '-')},+${state.toLowerCase()}+${postcode}/list-1`;
         const soldResp = await fetchWithTimeout(soldUrl, {
           headers: { ...BROWSER_HEADERS, 'Referer': 'https://www.google.com.au/' }
         });
         if (soldResp.ok) {
           const soldHtml = await soldResp.text();
-          // Look for our specific address in sold results
           const addrPattern = street.replace(/\s+/g, '\\s+');
           const addrMatch = soldHtml.match(new RegExp(`${addrPattern}[\\s\\S]{0,500}?\\$([\\d,]+)`, 'i'));
           if (addrMatch) {
