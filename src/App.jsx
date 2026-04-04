@@ -206,6 +206,8 @@ export default function App() {
       fallbackUpdatedAt: fetchedData?.fallbackUpdatedAt || null,
       listingDebug: fetchedData?.listingDebug || [],
       fieldSources: fetchedData?.fieldSources || {},
+      failedSources: fetchedData?.failedSources || [],
+      scraperApiEnabled: fetchedData?.scraperApiEnabled ?? null,
       // Individual listing data
       listing,
       listingPrice: listing?.listingPrice || listing?.lastSoldPrice || null,
@@ -446,9 +448,9 @@ export default function App() {
       </div>
 
       {/* Debug: Data sources per field */}
-      {(d.listingDebug?.length > 0 || d.fieldSources?.weeklyRent) && (
+      {(d.listingDebug?.length > 0 || d.fieldSources?.weeklyRent || d.failedSources?.length > 0) && (
         <details style={{ margin: '0 0 16px', padding: '8px 12px', background: '#f5f5f5', borderRadius: 6, fontSize: 12 }}>
-          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Data Sources Debug</summary>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Data Sources Debug {d.scraperApiEnabled != null && <span style={{ fontWeight: 400, color: d.scraperApiEnabled ? '#2e7d32' : '#c62828' }}>(ScraperAPI: {d.scraperApiEnabled ? 'ON' : 'OFF'})</span>}</summary>
           {d.listingDebug?.length > 0 && (
             <div style={{ marginTop: 8 }}>
               <strong>Phase 0 (Listing Lookup):</strong>
@@ -475,6 +477,17 @@ export default function App() {
               {d.fieldSources.medianPrice.map((c, i) => (
                 <div key={i} style={{ marginLeft: 12 }}>
                   {c.src}: {fmt(c.val)} {c.trusted ? '(trusted)' : ''}
+                </div>
+              ))}
+            </div>
+          )}
+          {d.failedSources?.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <strong>Failed sources ({d.failedSources.length}):</strong>
+              {d.failedSources.map((s, i) => (
+                <div key={i} style={{ marginLeft: 12, color: '#c62828' }}>
+                  {s.source}: {s.error || 'no data'}
+                  {s.htmlSnippet && <div style={{ marginLeft: 12, color: '#555', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{s.htmlSnippet.slice(0, 300)}</div>}
                 </div>
               ))}
             </div>

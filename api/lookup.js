@@ -45,10 +45,11 @@ async function fetchWithTimeout(url, opts = {}, timeout = TIMEOUT) {
 
 // Helper: fetch via ScraperAPI (bypasses bot detection for blocked sites)
 // Requires SCRAPER_API_KEY env var — falls back to direct fetch if absent
-async function fetchViaScraperAPI(url, timeout = 25000) {
+// render=true uses headless browser (5x credits) for JS-rendered pages
+async function fetchViaScraperAPI(url, timeout = 25000, render = false) {
   const key = process.env.SCRAPER_API_KEY;
   if (!key) return fetchWithTimeout(url, {}, timeout);
-  const scraperUrl = `https://api.scraperapi.com?api_key=${key}&url=${encodeURIComponent(url)}&country_code=au&render=false`;
+  const scraperUrl = `https://api.scraperapi.com?api_key=${key}&url=${encodeURIComponent(url)}&country_code=au&render=${render ? 'true' : 'false'}`;
   return fetchWithTimeout(scraperUrl, { headers: {} }, timeout);
 }
 
@@ -618,32 +619,43 @@ async function fetchSuburbsFinder(suburb, state, postcode) {
 async function fetchSQM(postcode) {
   const data = { source: 'SQM Research', fields: {} };
   try {
-    // Weekly rents page — via ScraperAPI if available (SQM blocks serverless IPs)
-    const rentResp = await fetchViaScraperAPI(`https://sqmresearch.com.au/weekly-rents.php?postcode=${postcode}&t=1`);
+    // Weekly rents page — render=true because SQM uses JS to populate table
+    const rentResp = await fetchViaScraperAPI(
+      `https://sqmresearch.com.au/weekly-rents.php?postcode=${postcode}&t=1`,
+      25000, true
+    );
     if (rentResp.ok) {
       const html = await rentResp.text();
-      // SQM shows "All Houses $XXX" or "Combined $XXX" weekly rent
-      const houseRent = rxNum(html, /(?:All\s*Houses|Houses?\s*Median)[^$]*\$([0-9,]+)/i);
-      if (houseRent) data.fields.weeklyRent = houseRent;
-      // Also try table format: <td>Houses</td><td>$680</td>
-      const tableRent = rxNum(html, /Houses<\/t[dh]>\s*<t[dh][^>]*>\s*\$([0-9,]+)/i);
-      if (tableRent && !data.fields.weeklyRent) data.fields.weeklyRent = tableRent;
-      // Vacancy rate if present
+      data.htmlSnippet = html.slice(0, 800); // debug: first 800 chars
+      // Pattern 1: table row — <td>Houses</td><td>$750</td> ($ optional)
+      const p1 = rxNum(html, /Houses<\/t[dh]>\s*<t[dh][^>]*>\s*\$?([0-9,]+)/i);
+      // Pattern 2: "All Houses $750" or "Houses Median $750"
+      const p2 = rxNum(html, /(?:All\s*)?Houses?\s*(?:Median)?[^$\d]{0,30}\$([0-9,]+)/i);
+      // Pattern 3: JS chart data — ['Houses', 750] or "Houses":750
+      const p3 = rxNum(html, /['"](H|h)ouses?['"][^0-9]{0,20}([4-9][0-9]{2}|[1-9][0-9]{3})/);
+      const p3val = (() => { const m = html.match(/['"](H|h)ouses?['"][^0-9]{0,20}([4-9][0-9]{2}|[1-9][0-9]{3})/); return m ? parseFloat(m[2]) : null; })();
+      // Pattern 4: any number 300-2000 near "asking" and "house"
+      const p4 = rxNum(html, /asking[^$]{0,200}?houses?[^$\d]{0,30}([4-9][0-9]{2}|[1-9][0-9]{3})/i)
+               || rxNum(html, /houses?[^$]{0,200}?asking[^$\d]{0,30}([4-9][0-9]{2}|[1-9][0-9]{3})/i);
+      const houseRent = p1 || p2 || p3val || p4;
+      if (houseRent && houseRent >= 200 && houseRent <= 2000) data.fields.weeklyRent = houseRent;
+      // Vacancy rate
       const vr = rxNum(html, /vacancy\s*rate[^0-9]*([0-9.]+)\s*%/i);
       if (vr) data.fields.vacancyRate = vr;
       if (Object.keys(data.fields).length > 0) data.ok = true;
+      else data.error = `no_match (${html.length}b): ${html.slice(0, 200).replace(/\s+/g, ' ')}`;
+    } else {
+      data.error = `HTTP ${rentResp.status}`;
     }
-  } catch (e) { /* SQM rent failed */ }
+  } catch (e) { data.error = `rent_err: ${e.message}`; }
 
   try {
-    // Median price graph — via ScraperAPI if available
+    // Median price graph
     const priceResp = await fetchViaScraperAPI(`https://sqmresearch.com.au/graph.php?postcode=${postcode}&mode=6&t=1`);
     if (priceResp.ok) {
       const html = await priceResp.text();
-      // Look for latest median price — "Median Price $X,XXX,XXX" or in JSON chart data
       const mp = rxNum(html, /(?:Median|Current)\s*(?:House)?\s*Price[^$]*\$([0-9,]+)/i);
       if (mp) { data.fields.medianPrice = mp; data.ok = true; }
-      // Try chart data format: {"y":935000} or similar
       const chartPrice = rxNum(html, /"(?:median|price|y)"[:\s]*([0-9]+(?:\.[0-9]+)?)/i);
       if (chartPrice && chartPrice > 100000 && !data.fields.medianPrice) {
         data.fields.medianPrice = chartPrice; data.ok = true;
@@ -660,8 +672,9 @@ async function fetchDomainProfile(suburb, state, postcode) {
   try {
     const slug = suburb.toLowerCase().replace(/\s+/g, '-');
     const url = `https://www.domain.com.au/suburb-profile/${slug}-${state.toLowerCase()}-${postcode}`;
-    const resp = await fetchWithTimeout(url);
-    if (!resp.ok) return data;
+    // Domain blocks Vercel IPs — use ScraperAPI if available
+    const resp = await fetchViaScraperAPI(url);
+    if (!resp.ok) { data.error = `HTTP ${resp.status}`; return data; }
     const html = await resp.text();
 
     // Try __NEXT_DATA__ JSON first (structured, most reliable)
@@ -1168,7 +1181,8 @@ export default async function handler(req, res) {
       Object.entries(fieldCandidates).filter(([k]) => ['weeklyRent','medianPrice'].includes(k))
         .map(([k, cands]) => [k, cands.map(c => ({ src: c.source, val: c.value, trusted: c.trusted }))])
     ),
-    failedSources: failedSources.map(s => ({ source: s.source, error: s.error })),
+    failedSources: failedSources.map(s => ({ source: s.source, error: s.error, htmlSnippet: s.htmlSnippet || null })),
+    scraperApiEnabled: !!process.env.SCRAPER_API_KEY,
     liveFieldCount: Object.keys(liveFields).length,
     dataSource: successSources.length > 0
       ? `live(${successSources.length + listingSources.length}/${allSources.length + 2 + (claudeResult ? 1 : 0)})`
