@@ -111,14 +111,12 @@ async function fetchDomainPropertyProfile(street, suburb, state, postcode) {
       }
     } catch (e) { /* suggest API failed, continue to HTML scrape */ }
 
-    // Strategy 2: Direct HTML property profile page
+    // Strategy 2: Direct HTML property profile page — Domain blocks Vercel IPs, use ScraperAPI
     const fullStreet = expandStreet(street);
     const slug = `${fullStreet}-${suburb}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-');
     const url = `https://www.domain.com.au/property-profile/${slug}-${state.toLowerCase()}-${postcode}`;
     data.urlAttempted = url;
-    const resp = await fetchWithTimeout(url, {
-      headers: { ...BROWSER_HEADERS, 'Referer': 'https://www.domain.com.au/suburb-profile/' + suburb.toLowerCase().replace(/\s+/g, '-') + '-' + state.toLowerCase() + '-' + postcode }
-    });
+    const resp = await fetchViaScraperAPI(url);
     if (!resp.ok) { data.error = `HTTP ${resp.status}`; return data; }
     const html = await resp.text();
     data.htmlLength = html.length;
@@ -270,13 +268,11 @@ async function fetchREAPropertyProfile(street, suburb, state, postcode) {
       }
     } catch (e) { data.error = e.message; }
 
-    // Strategy 2: Try REA buy listing search (different rate limit pool)
+    // Strategy 2: Try REA buy listing search — via ScraperAPI (REA blocks Vercel IPs)
     if (!data.ok) {
       try {
         const buyUrl = `https://www.realestate.com.au/buy/in-${suburb.toLowerCase().replace(/\s+/g, '-')},+${state.toLowerCase()}+${postcode}/list-1`;
-        const buyResp = await fetchWithTimeout(buyUrl, {
-          headers: { ...BROWSER_HEADERS, 'Referer': 'https://www.google.com.au/' }
-        });
+        const buyResp = await fetchViaScraperAPI(buyUrl);
         if (buyResp.ok) {
           const buyHtml = await buyResp.text();
           data.urlAttempted = buyUrl;
@@ -301,13 +297,11 @@ async function fetchREAPropertyProfile(street, suburb, state, postcode) {
       } catch (e) { /* buy search failed */ }
     }
 
-    // Strategy 3: Try REA sold search
+    // Strategy 3: Try REA sold search — via ScraperAPI
     if (!data.ok) {
       try {
         const soldUrl = `https://www.realestate.com.au/sold/in-${suburb.toLowerCase().replace(/\s+/g, '-')},+${state.toLowerCase()}+${postcode}/list-1`;
-        const soldResp = await fetchWithTimeout(soldUrl, {
-          headers: { ...BROWSER_HEADERS, 'Referer': 'https://www.google.com.au/' }
-        });
+        const soldResp = await fetchViaScraperAPI(soldUrl);
         if (soldResp.ok) {
           const soldHtml = await soldResp.text();
           const addrPattern = street.replace(/\s+/g, '\\s+');
@@ -560,8 +554,9 @@ async function fetchPropertyComAu(suburb, state, postcode) {
   try {
     const slug = suburb.toLowerCase().replace(/\s+/g, '-');
     const url = `https://www.property.com.au/${slug}-${state.toLowerCase()}-${postcode}/`;
+    data.urlAttempted = url;
     const resp = await fetchWithTimeout(url);
-    if (!resp.ok) return data;
+    if (!resp.ok) { data.error = `HTTP ${resp.status}`; return data; }
     const html = await resp.text();
     // More specific regex patterns to avoid grabbing wrong numbers
     const mp = rxNum(html, /median\s*(?:house|sold)?\s*price[^$]*\$([0-9,]+)/i);
@@ -573,6 +568,7 @@ async function fetchPropertyComAu(suburb, state, postcode) {
     const growth = rxNum(html, /(?:annual|yearly|12[- ]month)\s*(?:capital\s*)?growth[^0-9]*([0-9.]+)\s*%/i);
     if (growth) data.fields.annualGrowth = growth;
     if (Object.keys(data.fields).length > 0) data.ok = true;
+    else data.htmlSnippet = html.slice(0, 500);
   } catch (e) { data.error = e.message; }
   return data;
 }
@@ -588,8 +584,9 @@ async function fetchSuburbsFinder(suburb, state, postcode) {
     ];
     for (const url of urls) {
       try {
+        data.urlAttempted = url;
         const resp = await fetchWithTimeout(url);
-        if (!resp.ok) continue;
+        if (!resp.ok) { data.error = `HTTP ${resp.status}`; continue; }
         const ct = resp.headers.get('content-type') || '';
         if (ct.includes('json')) {
           const json = await resp.json();
@@ -608,8 +605,9 @@ async function fetchSuburbsFinder(suburb, state, postcode) {
           const vr = rxNum(html, /vacancy\s*rate[^0-9]*([0-9.]+)\s*%/i);
           if (vr) data.fields.vacancyRate = vr;
           if (Object.keys(data.fields).length > 0) { data.ok = true; break; }
+          else data.htmlSnippet = html.slice(0, 500);
         }
-      } catch (e) { continue; }
+      } catch (e) { data.error = e.message; continue; }
     }
   } catch (e) { data.error = e.message; }
   return data;
@@ -1176,19 +1174,21 @@ export default async function handler(req, res) {
       error: lr.error || null,
       fields: lr.ok ? Object.keys(lr.fields) : [],
     })),
-    // Debug: which source provided each key field
+    // Debug: which sources provided each key investment field
     fieldSources: Object.fromEntries(
-      Object.entries(fieldCandidates).filter(([k]) => ['weeklyRent','medianPrice'].includes(k))
+      Object.entries(fieldCandidates)
+        .filter(([k]) => ['weeklyRent','medianPrice','annualGrowth','vacancyRate','daysOnMarket','boomScore','grossYield','annualSales'].includes(k))
         .map(([k, cands]) => [k, cands.map(c => ({ src: c.source, val: c.value, trusted: c.trusted }))])
     ),
-    failedSources: failedSources.map(s => ({ source: s.source, error: s.error, htmlSnippet: s.htmlSnippet || null })),
+    failedSources: failedSources.map(s => ({ source: s.source, error: s.error, url: s.urlAttempted || null, htmlSnippet: s.htmlSnippet || null })),
     scraperApiEnabled: !!process.env.SCRAPER_API_KEY,
     liveFieldCount: Object.keys(liveFields).length,
     dataSource: successSources.length > 0
       ? `live(${successSources.length + listingSources.length}/${allSources.length + 2 + (claudeResult ? 1 : 0)})`
       : (hasFallback ? 'database' : 'defaults'),
     usedClaude: !!claudeResult?.ok,
-    fallbackUpdatedAt: (!successSources.length && hasFallback) ? FALLBACK_DB_UPDATED_AT : null,
+    // Show staleness warning when core investment metrics (price OR rent) come from FALLBACK_DB
+    fallbackUpdatedAt: ((!liveFields.medianPrice || !liveFields.weeklyRent) && hasFallback) ? FALLBACK_DB_UPDATED_AT : null,
   };
 
   return res.status(200).json(result);

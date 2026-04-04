@@ -208,6 +208,7 @@ export default function App() {
       fieldSources: fetchedData?.fieldSources || {},
       failedSources: fetchedData?.failedSources || [],
       scraperApiEnabled: fetchedData?.scraperApiEnabled ?? null,
+      liveFieldCount: fetchedData?.liveFieldCount ?? null,
       // Individual listing data
       listing,
       listingPrice: listing?.listingPrice || listing?.lastSoldPrice || null,
@@ -227,8 +228,8 @@ export default function App() {
     };
 
     setData(finalData);
-    // Price priority: listing price > suburb median
-    const initialPrice = finalData.listingPrice || finalData.medianPrice;
+    // Price priority: listing price > last sold price > suburb median
+    const initialPrice = finalData.listingPrice || finalData.lastSoldPrice || finalData.medianPrice;
     // Rent priority: listing rent > suburb median
     const initialRent = finalData.listingRent || finalData.weeklyRent;
     setPriceStr(String(initialPrice));
@@ -450,7 +451,7 @@ export default function App() {
       {/* Debug: Data sources per field */}
       {(d.listingDebug?.length > 0 || d.fieldSources?.weeklyRent || d.failedSources?.length > 0) && (
         <details style={{ margin: '0 0 16px', padding: '8px 12px', background: '#f5f5f5', borderRadius: 6, fontSize: 12 }}>
-          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Data Sources Debug {d.scraperApiEnabled != null && <span style={{ fontWeight: 400, color: d.scraperApiEnabled ? '#2e7d32' : '#c62828' }}>(ScraperAPI: {d.scraperApiEnabled ? 'ON' : 'OFF'})</span>}</summary>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Data Sources Debug {d.scraperApiEnabled != null && <span style={{ fontWeight: 400, color: d.scraperApiEnabled ? '#2e7d32' : '#c62828' }}> | ScraperAPI: {d.scraperApiEnabled ? 'ON' : 'OFF'}</span>}{d.liveFieldCount != null && <span style={{ fontWeight: 400, color: '#555' }}> | liveFields: {d.liveFieldCount}</span>}</summary>
           {d.listingDebug?.length > 0 && (
             <div style={{ marginTop: 8 }}>
               <strong>Phase 0 (Listing Lookup):</strong>
@@ -471,23 +472,25 @@ export default function App() {
               ))}
             </div>
           )}
-          {d.fieldSources?.medianPrice && (
-            <div style={{ marginTop: 8 }}>
-              <strong>medianPrice candidates:</strong>
-              {d.fieldSources.medianPrice.map((c, i) => (
-                <div key={i} style={{ marginLeft: 12 }}>
-                  {c.src}: {fmt(c.val)} {c.trusted ? '(trusted)' : ''}
-                </div>
-              ))}
-            </div>
-          )}
+          {['medianPrice','annualGrowth','vacancyRate','daysOnMarket','boomScore','grossYield','annualSales'].map(field => (
+            d.fieldSources?.[field] ? (
+              <div key={field} style={{ marginTop: 6 }}>
+                <strong>{field}:</strong>
+                {d.fieldSources[field].map((c, i) => (
+                  <span key={i} style={{ marginLeft: 8, color: c.trusted ? '#1565c0' : '#333' }}>
+                    {c.src}={field === 'medianPrice' ? fmt(c.val) : field === 'annualGrowth' || field === 'grossYield' || field === 'vacancyRate' ? `${c.val}%` : c.val}{c.trusted ? '★' : ''}
+                  </span>
+                ))}
+              </div>
+            ) : null
+          ))}
           {d.failedSources?.length > 0 && (
             <div style={{ marginTop: 8 }}>
               <strong>Failed sources ({d.failedSources.length}):</strong>
               {d.failedSources.map((s, i) => (
                 <div key={i} style={{ marginLeft: 12, color: '#c62828' }}>
-                  {s.source}: {s.error || 'no data'}
-                  {s.htmlSnippet && <div style={{ marginLeft: 12, color: '#555', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{s.htmlSnippet.slice(0, 300)}</div>}
+                  {s.source}: {s.error || 'no data'}{s.url ? <span style={{ color: '#888', fontSize: 11 }}> ({s.url.slice(0, 60)}...)</span> : ''}
+                  {s.htmlSnippet && <div style={{ marginLeft: 12, color: '#555', fontFamily: 'monospace', fontSize: 10, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{s.htmlSnippet.slice(0, 300)}</div>}
                 </div>
               ))}
             </div>
