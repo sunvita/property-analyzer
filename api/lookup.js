@@ -396,45 +396,83 @@ export default async function handler(req, res) {
     r.status === 'fulfilled' ? r.value : { source: 'unknown', error: 'rejected' }
   );
   let successSources = allSources.filter(s => s.ok);
-  let liveFields = {};
-  for (const src of successSources) {
-    Object.assign(liveFields, src.fields);
-  }
 
-  // ── Sanity validation: discard obviously wrong scraped values ──
+  // ── SMART DATA VALIDATION ──
+  // Instead of blindly merging, validate each scraped field properly
   const VALID_RANGES = {
-    medianPrice:      [100000, 20000000],  // $100K ~ $20M
-    weeklyRent:       [100, 5000],         // $100 ~ $5000/week
-    population:       [100, 5000000],      // 100 ~ 5M
-    popGrowth:        [-10, 50],           // -10% ~ 50%
-    medianIncomeWeekly: [300, 10000],      // $300 ~ $10000/week
+    medianPrice:      [100000, 20000000],
+    weeklyRent:       [100, 5000],
+    population:       [100, 5000000],
+    popGrowth:        [-10, 50],
+    medianIncomeWeekly: [300, 10000],
     incomeGrowth:     [-10, 100],
-    vacancyRate:      [0, 30],             // 0% ~ 30%
+    vacancyRate:      [0, 30],
     ownerOccRate:     [10, 100],
-    annualGrowth:     [-20, 50],           // -20% ~ 50%
+    annualGrowth:     [-20, 50],
     daysOnMarket:     [1, 365],
     annualSales:      [1, 10000],
     boomScore:        [0, 100],
-    grossYield:       [0.5, 20],           // 0.5% ~ 20%
+    grossYield:       [0.5, 20],
     affluenceScore:   [0, 100],
     crimeRate:        [0, 50000],
     seifaIndex:       [500, 1200],
   };
-  for (const [key, [min, max]] of Object.entries(VALID_RANGES)) {
-    if (liveFields[key] !== undefined && liveFields[key] !== null) {
-      if (typeof liveFields[key] === 'number' && (liveFields[key] < min || liveFields[key] > max)) {
-        delete liveFields[key]; // Discard out-of-range value
+
+  const fallback = FALLBACK_DB[s] || {};
+
+  // Step 1: Collect ALL values per field from every source (multi-source voting)
+  const fieldCandidates = {}; // { fieldName: [{value, source}] }
+  for (const src of successSources) {
+    for (const [key, val] of Object.entries(src.fields || {})) {
+      if (val === undefined || val === null) continue;
+      // Range check first
+      if (typeof val === 'number' && VALID_RANGES[key]) {
+        const [min, max] = VALID_RANGES[key];
+        if (val < min || val > max) continue; // skip out-of-range
       }
+      if (!fieldCandidates[key]) fieldCandidates[key] = [];
+      fieldCandidates[key].push({ value: val, source: src.source });
     }
   }
 
-  // ── Cross-validation: if implied gross yield is unrealistic, discard rent ──
-  const xPrice = liveFields.medianPrice || (hasFallback ? fallback.medianPrice : null);
-  const xRent  = liveFields.weeklyRent;
-  if (xPrice && xRent && typeof xPrice === 'number' && typeof xRent === 'number') {
-    const impliedYield = (xRent * 52) / xPrice * 100;
+  // Step 2: For each field, pick the best value using smart selection
+  let liveFields = {};
+  for (const [key, candidates] of Object.entries(fieldCandidates)) {
+    if (candidates.length === 0) continue;
+
+    const numCandidates = candidates.filter(c => typeof c.value === 'number');
+
+    if (numCandidates.length >= 2) {
+      // Multiple sources: use median (most robust against outliers)
+      const sorted = numCandidates.map(c => c.value).sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      liveFields[key] = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+
+    } else if (numCandidates.length === 1 && fallback && fallback[key] !== undefined) {
+      // Single source + DB reference: cross-check against DB
+      const scraped = numCandidates[0].value;
+      const dbVal = fallback[key];
+      const ratio = scraped / dbVal;
+      if (ratio > 3 || ratio < 0.2) {
+        // Scraped value is >3x or <0.2x the DB value → likely wrong, skip
+        // (DB value will be used as fallback later)
+      } else {
+        // Within reasonable range of DB → trust scraped (more recent)
+        liveFields[key] = scraped;
+      }
+
+    } else {
+      // Single source, no DB reference → use it with range check only
+      liveFields[key] = candidates[0].value;
+    }
+  }
+
+  // Step 3: Cross-field consistency checks
+  const checkPrice = liveFields.medianPrice || (fallback ? fallback.medianPrice : null);
+  const checkRent  = liveFields.weeklyRent;
+  if (checkPrice && checkRent && typeof checkPrice === 'number' && typeof checkRent === 'number') {
+    const impliedYield = (checkRent * 52) / checkPrice * 100;
     if (impliedYield > 12 || impliedYield < 1) {
-      // Yield outside 1-12% is almost certainly bad scraped data
       delete liveFields.weeklyRent;
       delete liveFields.grossYield;
     }
@@ -453,7 +491,6 @@ export default async function handler(req, res) {
   }
 
   const failedSources = allSources.filter(s => !s.ok);
-  const fallback = FALLBACK_DB[s] || {};
 
   // ── Merge: live > Claude > fallback > defaults ──
   const result = {
