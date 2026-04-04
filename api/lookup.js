@@ -43,6 +43,15 @@ async function fetchWithTimeout(url, opts = {}, timeout = TIMEOUT) {
   }
 }
 
+// Helper: fetch via ScraperAPI (bypasses bot detection for blocked sites)
+// Requires SCRAPER_API_KEY env var — falls back to direct fetch if absent
+async function fetchViaScraperAPI(url, timeout = 25000) {
+  const key = process.env.SCRAPER_API_KEY;
+  if (!key) return fetchWithTimeout(url, {}, timeout);
+  const scraperUrl = `https://api.scraperapi.com?api_key=${key}&url=${encodeURIComponent(url)}&country_code=au&render=false`;
+  return fetchWithTimeout(scraperUrl, { headers: {} }, timeout);
+}
+
 function rx(html, pattern, group = 1) {
   const m = html.match(pattern);
   return m ? m[group] : null;
@@ -242,16 +251,10 @@ async function fetchREAPropertyProfile(street, suburb, state, postcode) {
     const abbrevStreet = abbreviateStreet(street);
     const slug = `${abbrevStreet}-${suburb}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-');
 
-    // Strategy 1: REA's GraphQL/ResidentialListing API (less bot detection than HTML pages)
+    // Strategy 1: REA property page — via ScraperAPI if key available, else direct
     try {
       const apiUrl = `https://www.realestate.com.au/property/${slug}-${state.toLowerCase()}-${postcode}`;
-      const apiResp = await fetchWithTimeout(apiUrl, {
-        headers: {
-          ...BROWSER_HEADERS,
-          'Referer': `https://www.realestate.com.au/${state.toLowerCase()}/`,
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        }
-      });
+      const apiResp = await fetchViaScraperAPI(apiUrl);
       if (apiResp.ok) {
         const html = await apiResp.text();
         data.urlAttempted = apiUrl;
@@ -615,8 +618,8 @@ async function fetchSuburbsFinder(suburb, state, postcode) {
 async function fetchSQM(postcode) {
   const data = { source: 'SQM Research', fields: {} };
   try {
-    // Weekly rents page — has median asking rent for houses & units
-    const rentResp = await fetchWithTimeout(`https://sqmresearch.com.au/weekly-rents.php?postcode=${postcode}&t=1`);
+    // Weekly rents page — via ScraperAPI if available (SQM blocks serverless IPs)
+    const rentResp = await fetchViaScraperAPI(`https://sqmresearch.com.au/weekly-rents.php?postcode=${postcode}&t=1`);
     if (rentResp.ok) {
       const html = await rentResp.text();
       // SQM shows "All Houses $XXX" or "Combined $XXX" weekly rent
@@ -633,8 +636,8 @@ async function fetchSQM(postcode) {
   } catch (e) { /* SQM rent failed */ }
 
   try {
-    // Median price graph — has median sold price data
-    const priceResp = await fetchWithTimeout(`https://sqmresearch.com.au/graph.php?postcode=${postcode}&mode=6&t=1`);
+    // Median price graph — via ScraperAPI if available
+    const priceResp = await fetchViaScraperAPI(`https://sqmresearch.com.au/graph.php?postcode=${postcode}&mode=6&t=1`);
     if (priceResp.ok) {
       const html = await priceResp.text();
       // Look for latest median price — "Median Price $X,XXX,XXX" or in JSON chart data
@@ -858,6 +861,8 @@ async function fetchClaudeAnalysis(suburb, state, postcode) {
 }
 
 // ─── EMBEDDED FALLBACK DATABASE (25 suburbs) ───
+// Last updated: manually curated from CoreLogic/Domain data
+const FALLBACK_DB_UPDATED_AT = '2025-01';
 const FALLBACK_DB = {
   'BERKELEY VALE': { postcode:'2261', medianPrice:935000, weeklyRent:680, population:8951, popGrowth:7.13, medianIncomeWeekly:1780, incomeGrowth:27.78, vacancyRate:1.0, ownerOccRate:77.1, annualGrowth:5.65, daysOnMarket:26, annualSales:149, boomScore:52, zoning:'R2 Low Density', nearestStationKm:4.0 },
   'TUGGERAH': { postcode:'2259', medianPrice:850000, weeklyRent:620, population:3500, popGrowth:5.2, medianIncomeWeekly:1650, incomeGrowth:22.0, vacancyRate:0.8, ownerOccRate:72.0, annualGrowth:6.2, daysOnMarket:28, annualSales:95, boomScore:55, zoning:'R2 Low Density', nearestStationKm:0.3 },
@@ -1169,6 +1174,7 @@ export default async function handler(req, res) {
       ? `live(${successSources.length + listingSources.length}/${allSources.length + 2 + (claudeResult ? 1 : 0)})`
       : (hasFallback ? 'database' : 'defaults'),
     usedClaude: !!claudeResult?.ok,
+    fallbackUpdatedAt: (!successSources.length && hasFallback) ? FALLBACK_DB_UPDATED_AT : null,
   };
 
   return res.status(200).json(result);

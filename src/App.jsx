@@ -203,6 +203,7 @@ export default function App() {
       dataSource: fetchedData?.dataSource || (localData ? 'database' : 'defaults'),
       sources: fetchedData?.sources || [],
       usedClaude: fetchedData?.usedClaude || false,
+      fallbackUpdatedAt: fetchedData?.fallbackUpdatedAt || null,
       listingDebug: fetchedData?.listingDebug || [],
       fieldSources: fetchedData?.fieldSources || {},
       // Individual listing data
@@ -366,6 +367,11 @@ export default function App() {
           Data: {d.dataSource} | Sources: {d.sources?.length > 0 ? d.sources.join(', ') : 'Embedded DB'}
           {d.usedClaude && ' | Claude AI assisted'}
         </div>
+        {d.fallbackUpdatedAt && (
+          <div style={{ marginTop: 10, padding: '8px 14px', background: '#fff8e1', border: '1px solid #f9a825', borderRadius: 8, fontSize: 12, color: '#5c4300' }}>
+            ⚠️ 라이브 데이터 수집 실패 — 내장 데이터베이스 사용 중 (기준: {d.fallbackUpdatedAt}). 수치는 실제와 다를 수 있으니 참고용으로만 활용하세요.
+          </div>
+        )}
         <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
           <button
             onClick={() => {
