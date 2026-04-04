@@ -340,33 +340,7 @@ export default function App() {
     <div className="container">
 
       {/* ── HEADER ── */}
-      <div className="header" style={{ position: 'relative' }}>
-        {/* Share / PDF buttons — top right */}
-        <div style={{ position: 'absolute', top: 16, right: 16, display: 'flex', gap: 8 }}>
-          <button
-            onClick={() => {
-              const url = window.location.href;
-              if (navigator.share) {
-                navigator.share({ title: `Investment Analysis: ${address}`, url });
-              } else {
-                navigator.clipboard.writeText(url);
-                alert('Link copied!');
-              }
-            }}
-            style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 8, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-            Share
-          </button>
-          <button
-            onClick={() => { window.print(); }}
-            style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.25)', color: 'white', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 8, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-            PDF
-          </button>
-        </div>
-
+      <div className="header">
         <h1>Property Investment Analysis</h1>
         <div className="address">{address}</div>
         <div className="meta">{region}, {d.state} | Analysis Date: {new Date().toLocaleDateString('en-AU', {month:'long', year:'numeric'})}</div>
@@ -374,12 +348,33 @@ export default function App() {
           Data: {d.dataSource} | Sources: {d.sources?.length > 0 ? d.sources.join(', ') : 'Embedded DB'}
           {d.usedClaude && ' | Claude AI assisted'}
         </div>
-        <button
-          onClick={() => { setData(null); setAddress(''); }}
-          style={{ marginTop: 12, padding: '6px 20px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}
-        >
-          New Analysis
-        </button>
+        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => {
+              const url = window.location.href;
+              if (navigator.share) {
+                navigator.share({ title: 'Investment Analysis: ' + address, url: url });
+              } else {
+                navigator.clipboard.writeText(url).then(function() { alert('Link copied!'); });
+              }
+            }}
+            style={{ padding: '6px 16px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 8, cursor: 'pointer', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            Share
+          </button>
+          <button
+            onClick={function() { window.print(); }}
+            style={{ padding: '6px 16px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 8, cursor: 'pointer', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            PDF
+          </button>
+          <button
+            onClick={function() { setData(null); setAddress(''); }}
+            style={{ padding: '6px 16px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}
+          >
+            New Analysis
+          </button>
+        </div>
       </div>
 
       {/* ── 1. Property Overview ── */}

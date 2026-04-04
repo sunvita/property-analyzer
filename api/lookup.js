@@ -428,6 +428,18 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── Cross-validation: if implied gross yield is unrealistic, discard rent ──
+  const xPrice = liveFields.medianPrice || (hasFallback ? fallback.medianPrice : null);
+  const xRent  = liveFields.weeklyRent;
+  if (xPrice && xRent && typeof xPrice === 'number' && typeof xRent === 'number') {
+    const impliedYield = (xRent * 52) / xPrice * 100;
+    if (impliedYield > 12 || impliedYield < 1) {
+      // Yield outside 1-12% is almost certainly bad scraped data
+      delete liveFields.weeklyRent;
+      delete liveFields.grossYield;
+    }
+  }
+
   // ── Phase 2: If no web data AND no fallback DB → use Claude API ──
   const hasUsefulData = Object.keys(liveFields).length >= 3 || hasFallback;
   let claudeResult = null;
