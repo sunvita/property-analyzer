@@ -415,8 +415,8 @@ export default function App() {
         )}
 
         <div className="score-card">
-          <div className="score-item"><div className="value">{fmtK(d.medianPrice)}</div><div className="label">Median (House)</div></div>
-          <div className="score-item"><div className="value">${d.weeklyRent}/w</div><div className="label">Weekly Rent</div></div>
+          <div className="score-item"><div className="value">{d.listingPrice ? fmt(d.listingPrice) : fmtK(d.medianPrice)}</div><div className="label">{d.listingPrice ? 'Listing Price' : 'Median (House)'}</div></div>
+          <div className="score-item"><div className="value">${d.listingRent || d.weeklyRent}/w</div><div className="label">{d.listingRent ? 'Listing Rent' : 'Weekly Rent'}</div></div>
           <div className="score-item"><div className="value">{d.boomScore}/100</div><div className="label">BoomScore</div></div>
           <div className="score-item"><div className="value">{d.daysOnMarket}일</div><div className="label">Days on Market</div></div>
           <div className="score-item"><div className="value">{d.annualSales}건</div><div className="label">Annual Sales</div></div>
@@ -428,9 +428,10 @@ export default function App() {
             {d.listingPrice && <tr style={{ background: '#f1f8e9' }}><td><strong>매물 가격 (Listing)</strong></td><td><strong>{fmt(d.listingPrice)}</strong></td><td>REA/Domain</td></tr>}
             <tr><td>지역 중간 가격</td><td>{fmt(d.medianPrice)}</td><td>{region} 수준</td></tr>
             <tr><td>연간 자본 성장률</td><td>{pct(d.annualGrowth)}</td><td><Badge text={d.annualGrowth > 5 ? '양호' : '보통'} /></td></tr>
-            <tr><td>렌탈 수익률 (Gross)</td><td>{pct((d.weeklyRent * 52) / d.medianPrice * 100, 2)}</td><td><Badge text={(d.weeklyRent * 52 / d.medianPrice * 100) > 4.5 ? '양호' : '보통'} /></td></tr>
+            <tr><td>렌탈 수익률 (Gross)</td><td>{pct(((d.listingRent || d.weeklyRent) * 52) / (d.listingPrice || d.medianPrice) * 100, 2)}</td><td><Badge text={((d.listingRent || d.weeklyRent) * 52 / (d.listingPrice || d.medianPrice) * 100) > 4.5 ? '양호' : '보통'} /></td></tr>
             {d.listingRent && <tr style={{ background: '#f1f8e9' }}><td><strong>매물 렌트 (Listing)</strong></td><td><strong>${d.listingRent}/week</strong></td><td>REA/Domain</td></tr>}
-            <tr><td>주간 렌트 (미디언)</td><td>${d.weeklyRent}/week</td><td>{region} 수준</td></tr>
+            {d.listingRent && <tr><td>지역 미디언 렌트</td><td>${d.weeklyRent}/week</td><td>{region} 수준</td></tr>}
+            {!d.listingRent && <tr><td>주간 렌트 (미디언)</td><td>${d.weeklyRent}/week</td><td>{region} 수준</td></tr>}
             <tr><td>BoomScore</td><td>{d.boomScore}/100 - {d.boomScore >= 60 ? 'Strong' : d.boomScore >= 45 ? 'Healthy' : 'Weak'} Market</td><td><Badge text="안정적" type="badge-blue" /></td></tr>
             <tr><td>평균 매물 체류</td><td>{d.daysOnMarket}일</td><td><Badge text={d.daysOnMarket < 30 ? '빠른 거래' : '보통'} /></td></tr>
             <tr><td>연간 매매 건수</td><td>{d.annualSales}건 (12개월)</td><td><Badge text={d.annualSales > 100 ? '활발' : '보통'} /></td></tr>
