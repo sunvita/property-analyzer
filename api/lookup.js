@@ -4,7 +4,7 @@
 // Falls back to embedded database when all else fails
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
-const TIMEOUT = 10000;
+const TIMEOUT = 8000; // Keep under Vercel 10s limit (leaves ~2s overhead)
 
 // Full browser-like headers to avoid bot detection
 const BROWSER_HEADERS = {
@@ -45,8 +45,8 @@ async function fetchWithTimeout(url, opts = {}, timeout = TIMEOUT) {
 
 // Helper: fetch via ScraperAPI (bypasses bot detection for blocked sites)
 // Requires SCRAPER_API_KEY env var — falls back to direct fetch if absent
-// Timeout kept at 7s to stay within Vercel Hobby 10s function limit
-async function fetchViaScraperAPI(url, timeout = 7000) {
+// 8.5s timeout: sources run in parallel, so total function time ≈ slowest single source (~9s total)
+async function fetchViaScraperAPI(url, timeout = 8500) {
   const key = process.env.SCRAPER_API_KEY;
   if (!key) return fetchWithTimeout(url, {}, timeout);
   const scraperUrl = `https://api.scraperapi.com?api_key=${key}&url=${encodeURIComponent(url)}&country_code=au&render=false`;
