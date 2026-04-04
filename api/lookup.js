@@ -186,35 +186,25 @@ async function fetchOpenStats(suburb) {
   return data;
 }
 
-// ─── SOURCE 6: Property.com.au + Domain ───
-async function fetchPropertySites(suburb, state, postcode) {
-  const data = { source: 'Property.com.au/Domain', fields: {} };
+// ─── SOURCE 6: Property.com.au ───
+async function fetchPropertyComAu(suburb, state, postcode) {
+  const data = { source: 'Property.com.au', fields: {} };
   try {
     const slug = suburb.toLowerCase().replace(/\s+/g, '-');
-    const urls = [
-      `https://www.property.com.au/${slug}-${state.toLowerCase()}-${postcode}/`,
-      `https://www.domain.com.au/suburb-profile/${slug}-${state.toLowerCase()}-${postcode}`,
-    ];
-    for (const url of urls) {
-      try {
-        const resp = await fetchWithTimeout(url);
-        if (!resp.ok) continue;
-        const html = await resp.text();
-        const mp = rxNum(html, /median[^$]*\$([0-9,]+)/i);
-        if (mp && !data.fields.medianPrice) data.fields.medianPrice = mp;
-        const rent = rxNum(html, /median\s*(?:weekly)?\s*rent[^$]*\$([0-9,]+)/i);
-        if (rent && !data.fields.weeklyRent) data.fields.weeklyRent = rent;
-        const dom = rxNum(html, /(\d+)\s*days?\s*(?:on\s*market|to\s*sell)/i);
-        if (dom && !data.fields.daysOnMarket) data.fields.daysOnMarket = dom;
-        const growth = rxNum(html, /(?:annual|yearly)\s*(?:capital)?\s*growth[^0-9]*([0-9.]+)\s*%/i);
-        if (growth && !data.fields.annualGrowth) data.fields.annualGrowth = growth;
-        const flood = rx(html, /(flood\s*(?:zone|risk|prone)[^<]{0,100})/i);
-        if (flood) data.fields.floodZone = flood.trim();
-        const fire = rx(html, /(bush\s*fire\s*(?:zone|risk|prone|BAL)[^<]{0,100})/i);
-        if (fire) data.fields.bushfireRisk = fire.trim();
-        if (Object.keys(data.fields).length > 0) data.ok = true;
-      } catch (e) { continue; }
-    }
+    const url = `https://www.property.com.au/${slug}-${state.toLowerCase()}-${postcode}/`;
+    const resp = await fetchWithTimeout(url);
+    if (!resp.ok) return data;
+    const html = await resp.text();
+    // More specific regex patterns to avoid grabbing wrong numbers
+    const mp = rxNum(html, /median\s*(?:house|sold)?\s*price[^$]*\$([0-9,]+)/i);
+    if (mp) data.fields.medianPrice = mp;
+    const rent = rxNum(html, /median\s*(?:weekly\s*)?rent\s*(?:house)?[^$]*\$([0-9,]+)\s*(?:\/?\s*w(?:ee)?k|pw)/i);
+    if (rent) data.fields.weeklyRent = rent;
+    const dom = rxNum(html, /(\d+)\s*(?:average\s*)?days?\s*(?:on\s*market|to\s*sell)/i);
+    if (dom) data.fields.daysOnMarket = dom;
+    const growth = rxNum(html, /(?:annual|yearly|12[- ]month)\s*(?:capital\s*)?growth[^0-9]*([0-9.]+)\s*%/i);
+    if (growth) data.fields.annualGrowth = growth;
+    if (Object.keys(data.fields).length > 0) data.ok = true;
   } catch (e) { data.error = e.message; }
   return data;
 }
@@ -254,6 +244,163 @@ async function fetchSuburbsFinder(suburb, state, postcode) {
       } catch (e) { continue; }
     }
   } catch (e) { data.error = e.message; }
+  return data;
+}
+
+// ─── SOURCE 8: SQM Research (authoritative rent + price) ───
+async function fetchSQM(postcode) {
+  const data = { source: 'SQM Research', fields: {} };
+  try {
+    // Weekly rents page — has median asking rent for houses & units
+    const rentResp = await fetchWithTimeout(`https://sqmresearch.com.au/weekly-rents.php?postcode=${postcode}&t=1`);
+    if (rentResp.ok) {
+      const html = await rentResp.text();
+      // SQM shows "All Houses $XXX" or "Combined $XXX" weekly rent
+      const houseRent = rxNum(html, /(?:All\s*Houses|Houses?\s*Median)[^$]*\$([0-9,]+)/i);
+      if (houseRent) data.fields.weeklyRent = houseRent;
+      // Also try table format: <td>Houses</td><td>$680</td>
+      const tableRent = rxNum(html, /Houses<\/t[dh]>\s*<t[dh][^>]*>\s*\$([0-9,]+)/i);
+      if (tableRent && !data.fields.weeklyRent) data.fields.weeklyRent = tableRent;
+      // Vacancy rate if present
+      const vr = rxNum(html, /vacancy\s*rate[^0-9]*([0-9.]+)\s*%/i);
+      if (vr) data.fields.vacancyRate = vr;
+      if (Object.keys(data.fields).length > 0) data.ok = true;
+    }
+  } catch (e) { /* SQM rent failed */ }
+
+  try {
+    // Median price graph — has median sold price data
+    const priceResp = await fetchWithTimeout(`https://sqmresearch.com.au/graph.php?postcode=${postcode}&mode=6&t=1`);
+    if (priceResp.ok) {
+      const html = await priceResp.text();
+      // Look for latest median price — "Median Price $X,XXX,XXX" or in JSON chart data
+      const mp = rxNum(html, /(?:Median|Current)\s*(?:House)?\s*Price[^$]*\$([0-9,]+)/i);
+      if (mp) { data.fields.medianPrice = mp; data.ok = true; }
+      // Try chart data format: {"y":935000} or similar
+      const chartPrice = rxNum(html, /"(?:median|price|y)"[:\s]*([0-9]+(?:\.[0-9]+)?)/i);
+      if (chartPrice && chartPrice > 100000 && !data.fields.medianPrice) {
+        data.fields.medianPrice = chartPrice; data.ok = true;
+      }
+    }
+  } catch (e) { /* SQM price failed */ }
+
+  return data;
+}
+
+// ─── SOURCE 9: Domain Suburb Profile (__NEXT_DATA__ JSON) ───
+async function fetchDomainProfile(suburb, state, postcode) {
+  const data = { source: 'Domain Profile', fields: {} };
+  try {
+    const slug = suburb.toLowerCase().replace(/\s+/g, '-');
+    const url = `https://www.domain.com.au/suburb-profile/${slug}-${state.toLowerCase()}-${postcode}`;
+    const resp = await fetchWithTimeout(url);
+    if (!resp.ok) return data;
+    const html = await resp.text();
+
+    // Try __NEXT_DATA__ JSON first (structured, most reliable)
+    const nextDataMatch = html.match(/<script\s+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
+    if (nextDataMatch) {
+      try {
+        const nextData = JSON.parse(nextDataMatch[1]);
+        const props = nextData?.props?.pageProps;
+        if (props) {
+          // Navigate to suburb stats within the structured data
+          const stats = props.suburbProfile || props.suburbData || props;
+          if (stats.medianSoldPrice || stats.medianPrice) {
+            data.fields.medianPrice = stats.medianSoldPrice || stats.medianPrice;
+          }
+          if (stats.medianRentPrice || stats.medianWeeklyRent || stats.medianRent) {
+            data.fields.weeklyRent = stats.medianRentPrice || stats.medianWeeklyRent || stats.medianRent;
+          }
+          if (stats.daysOnMarket || stats.avgDaysOnMarket) {
+            data.fields.daysOnMarket = stats.daysOnMarket || stats.avgDaysOnMarket;
+          }
+          if (stats.annualGrowth || stats.medianPriceGrowth) {
+            data.fields.annualGrowth = stats.annualGrowth || stats.medianPriceGrowth;
+          }
+          if (stats.rentalYield) data.fields.grossYield = stats.rentalYield;
+          if (stats.numberSold || stats.salesCount) {
+            data.fields.annualSales = stats.numberSold || stats.salesCount;
+          }
+          if (Object.keys(data.fields).length > 0) data.ok = true;
+        }
+      } catch (e) { /* JSON parse failed, fall through to regex */ }
+    }
+
+    // Fallback: regex from rendered HTML
+    if (!data.ok) {
+      const mp = rxNum(html, /median\s*(?:sold)?\s*price[^$]*\$([0-9,]+)/i);
+      if (mp) data.fields.medianPrice = mp;
+      const rent = rxNum(html, /median\s*(?:weekly)?\s*rent[^$]*\$([0-9,]+)/i);
+      if (rent) data.fields.weeklyRent = rent;
+      const dom = rxNum(html, /(\d+)\s*days?\s*(?:on\s*market|to\s*sell)/i);
+      if (dom) data.fields.daysOnMarket = dom;
+      if (Object.keys(data.fields).length > 0) data.ok = true;
+    }
+  } catch (e) { data.error = e.message; }
+  return data;
+}
+
+// ─── SOURCE 10: NSW ArcGIS — Flood & Bushfire ───
+// Suburb centroid coordinates for common suburbs (expandable)
+const SUBURB_COORDS = {
+  'BERKELEY VALE': [-33.343, 151.434],
+  'TUGGERAH': [-33.307, 151.416],
+  'GOSFORD': [-33.426, 151.342],
+  'WYONG': [-33.283, 151.422],
+  'THE ENTRANCE': [-33.341, 151.498],
+  'ERINA': [-33.437, 151.389],
+  'WOY WOY': [-33.485, 151.324],
+  'BLACKTOWN': [-33.771, 150.906],
+  'PARRAMATTA': [-33.815, 151.001],
+  'LIVERPOOL': [-33.920, 150.924],
+  'PENRITH': [-33.751, 150.694],
+  'NEWCASTLE': [-32.926, 151.776],
+  'WOLLONGONG': [-34.424, 150.893],
+  'BANKSTOWN': [-33.918, 151.035],
+};
+
+async function fetchFloodBushfire(suburb, state) {
+  const data = { source: 'NSW Hazard Maps', fields: {} };
+  if (state !== 'NSW') return data; // Only NSW ArcGIS for now
+
+  const coords = SUBURB_COORDS[suburb];
+  if (!coords) return data; // No coordinates available
+
+  const [lat, lng] = coords;
+  const geom = JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } });
+
+  // Bushfire Prone Land query
+  try {
+    const bfUrl = `https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/ePlanning/Planning_Portal_Hazard/MapServer/229/query?geometry=${encodeURIComponent(geom)}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=false&f=json`;
+    const bfResp = await fetchWithTimeout(bfUrl);
+    if (bfResp.ok) {
+      const json = await bfResp.json();
+      if (json.features && json.features.length > 0) {
+        const cat = json.features[0].attributes?.Category || json.features[0].attributes?.category || 'Yes';
+        data.fields.bushfireRisk = `Bushfire Prone Land — ${cat}`;
+      } else {
+        data.fields.bushfireRisk = 'Not in Bushfire Prone Land';
+      }
+      data.ok = true;
+    }
+  } catch (e) { /* bushfire query failed */ }
+
+  // Flood Planning query
+  try {
+    const flUrl = `https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/Planning/Hazard/MapServer/1/query?geometry=${encodeURIComponent(geom)}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=false&f=json`;
+    const flResp = await fetchWithTimeout(flUrl);
+    if (flResp.ok) {
+      const json = await flResp.json();
+      if (json.features && json.features.length > 0) {
+        data.fields.floodZone = 'Flood Planning Area — confirmed';
+      } else {
+        data.fields.floodZone = 'Not in Flood Planning Area';
+      }
+      data.ok = true;
+    }
+  } catch (e) { /* flood query failed */ }
+
   return data;
 }
 
@@ -379,7 +526,7 @@ export default async function handler(req, res) {
   const st = (state || 'NSW').toUpperCase().trim();
   const hasFallback = !!FALLBACK_DB[s];
 
-  // ── Phase 1: Run ALL web sources in parallel ──
+  // ── Phase 1: Run ALL web sources in parallel (12 sources) ──
   const webResults = await Promise.allSettled([
     fetchBoomScore(s, st, pc),        // 1. Demand/Supply
     fetchHtag(s, st, pc),             // 1b. Demand/Supply
@@ -387,9 +534,12 @@ export default async function handler(req, res) {
     fetchRemplan(s, st),              // 3. Economy/Community
     fetchMicroburbs(s, st),           // 4. Affluence/Crime
     fetchOpenStats(s),                // 5. Crime/Socio-economic
-    fetchPropertySites(s, st, pc),    // 6. Property details
+    fetchPropertyComAu(s, st, pc),    // 6. Property.com.au
     fetchSuburbsFinder(s, st, pc),    // 7. Cash flow metrics
-    fetchABS(pc),                     // Census data
+    fetchSQM(pc),                     // 8. SQM Research (rent + price authority)
+    fetchDomainProfile(s, st, pc),    // 9. Domain structured data
+    fetchFloodBushfire(s, st),        // 10. NSW Flood/Bushfire ArcGIS
+    fetchABS(pc),                     // 11. Census data
   ]);
 
   const allSources = webResults.map(r =>
@@ -420,55 +570,74 @@ export default async function handler(req, res) {
 
   const fallback = FALLBACK_DB[s] || {};
 
-  // Step 1: Collect ALL values per field from every source (multi-source voting)
-  const fieldCandidates = {}; // { fieldName: [{value, source}] }
+  // ── TRUSTED SOURCES: SQM & Domain Profile are higher reliability ──
+  const TRUSTED_SOURCES = ['SQM Research', 'Domain Profile'];
+
+  // Step 1: Collect ALL values per field from every source
+  const fieldCandidates = {};
   for (const src of successSources) {
     for (const [key, val] of Object.entries(src.fields || {})) {
       if (val === undefined || val === null) continue;
-      // Range check first
       if (typeof val === 'number' && VALID_RANGES[key]) {
         const [min, max] = VALID_RANGES[key];
-        if (val < min || val > max) continue; // skip out-of-range
+        if (val < min || val > max) continue;
       }
       if (!fieldCandidates[key]) fieldCandidates[key] = [];
-      fieldCandidates[key].push({ value: val, source: src.source });
+      fieldCandidates[key].push({ value: val, source: src.source, trusted: TRUSTED_SOURCES.includes(src.source) });
     }
   }
 
-  // Step 2: For each field, pick the best value using smart selection
+  // Step 2: Smart field selection with source trust hierarchy
   let liveFields = {};
   for (const [key, candidates] of Object.entries(fieldCandidates)) {
     if (candidates.length === 0) continue;
 
     const numCandidates = candidates.filter(c => typeof c.value === 'number');
+    const trustedCandidates = numCandidates.filter(c => c.trusted);
+    const strCandidates = candidates.filter(c => typeof c.value === 'string');
 
-    if (numCandidates.length >= 2) {
-      // Multiple sources: use median (most robust against outliers)
+    // String fields (floodZone, bushfireRisk, zoning): prefer NSW Hazard Maps
+    if (strCandidates.length > 0 && numCandidates.length === 0) {
+      const hazardSource = strCandidates.find(c => c.source === 'NSW Hazard Maps');
+      liveFields[key] = hazardSource ? hazardSource.value : strCandidates[0].value;
+      continue;
+    }
+
+    // Numeric fields: trust hierarchy
+    if (trustedCandidates.length >= 2) {
+      // 2+ trusted sources agree: use their median
+      const sorted = trustedCandidates.map(c => c.value).sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      liveFields[key] = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+
+    } else if (trustedCandidates.length === 1) {
+      // 1 trusted source: use it, cross-validate untrusted against it
+      liveFields[key] = trustedCandidates[0].value;
+
+    } else if (numCandidates.length >= 2) {
+      // No trusted, but 2+ untrusted: use median
       const sorted = numCandidates.map(c => c.value).sort((a, b) => a - b);
       const mid = Math.floor(sorted.length / 2);
       liveFields[key] = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 
-    } else if (numCandidates.length === 1 && fallback && fallback[key] !== undefined) {
-      // Single source + DB reference: cross-check against DB
+    } else if (numCandidates.length === 1) {
+      // Single untrusted source: cross-check against DB if available
       const scraped = numCandidates[0].value;
-      const dbVal = fallback[key];
-      const ratio = scraped / dbVal;
-      if (ratio > 3 || ratio < 0.2) {
-        // Scraped value is >3x or <0.2x the DB value → likely wrong, skip
-        // (DB value will be used as fallback later)
+      if (fallback[key] !== undefined) {
+        const ratio = scraped / fallback[key];
+        if (ratio > 3 || ratio < 0.2) {
+          // Too far from DB → discard (DB used later as fallback)
+        } else {
+          liveFields[key] = scraped;
+        }
       } else {
-        // Within reasonable range of DB → trust scraped (more recent)
         liveFields[key] = scraped;
       }
-
-    } else {
-      // Single source, no DB reference → use it with range check only
-      liveFields[key] = candidates[0].value;
     }
   }
 
   // Step 3: Cross-field consistency checks
-  const checkPrice = liveFields.medianPrice || (fallback ? fallback.medianPrice : null);
+  const checkPrice = liveFields.medianPrice || fallback.medianPrice;
   const checkRent  = liveFields.weeklyRent;
   if (checkPrice && checkRent && typeof checkPrice === 'number' && typeof checkRent === 'number') {
     const impliedYield = (checkRent * 52) / checkPrice * 100;
