@@ -84,14 +84,20 @@ async function fetchDomainPropertyProfile(street, suburb, state, postcode) {
             }
           }
           // Estimated value / current listing price
-          if (pp.price || pp.listingPrice || pp.estimatedValue) {
-            data.fields.listingPrice = pp.price || pp.listingPrice || pp.estimatedValue;
+          // Avoid duplicating soldPrice as listingPrice
+          const candidateListingPrice = pp.listingPrice || pp.estimatedValue || pp.price;
+          if (candidateListingPrice && typeof candidateListingPrice === 'number') {
+            // Only set listingPrice if it's different from lastSoldPrice (avoid duplication)
+            if (!data.fields.lastSoldPrice || Math.abs(candidateListingPrice - data.fields.lastSoldPrice) > 1000) {
+              data.fields.listingPrice = candidateListingPrice;
+            }
           }
           // Property details
           if (pp.beds || pp.bedrooms) data.fields.beds = pp.beds || pp.bedrooms;
           if (pp.baths || pp.bathrooms) data.fields.baths = pp.baths || pp.bathrooms;
           if (pp.parking || pp.carSpaces) data.fields.cars = pp.parking || pp.carSpaces;
-          if (pp.landSize || pp.landArea) data.fields.landSize = pp.landSize || pp.landArea;
+          const rawLand = pp.landSize || pp.landArea;
+          if (rawLand && typeof rawLand === 'number' && rawLand >= 50 && rawLand < 100000) data.fields.landSize = rawLand;
           if (pp.propertyType) data.fields.propertyType = pp.propertyType;
           // Rental history
           const rentHistory = pp.rentHistory || pp.rentalHistory || pp.rentals;
@@ -119,8 +125,8 @@ async function fetchDomainPropertyProfile(street, suburb, state, postcode) {
       if (baths) data.fields.baths = baths;
       const cars = rxNum(html, /(\d+)\s*(?:car\s*(?:space|park)?s?|garage)\b/i);
       if (cars) data.fields.cars = cars;
-      const land = rxNum(html, /(\d+)\s*m[²2]/i);
-      if (land) data.fields.landSize = land;
+      const land = rxNum(html, /(\d[\d,]+)\s*m[²2]/i);
+      if (land && land >= 50 && land < 100000) data.fields.landSize = land;
       const rent = rxNum(html, /(?:rent(?:ed|al)?)[^$]*\$([0-9,]+)\s*(?:\/?\s*w(?:ee)?k|pw)/i);
       if (rent) { data.fields.listingRent = rent; data.ok = true; }
     }
